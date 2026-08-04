@@ -99,7 +99,7 @@ function nav_active(string $file, string $current): string
     <a href="relief_dashboard.php" class="nav-link <?= nav_active('relief_dashboard.php', $__current) ?>">
       <i class="bi bi-bar-chart-line"></i><span>Relief Dashboard</span>
     </a>
-    <?php if (in_array($__role, ['admin', 'logistics'], true)): ?>
+    <?php if (in_array($__role, ['admin', 'logistics', 'approver'], true)): ?>
     <a href="distributions.php" class="nav-link <?= nav_active('distributions.php', $__current) ?>">
       <i class="bi bi-truck"></i><span>Distributions</span>
     </a>
@@ -111,14 +111,16 @@ function nav_active(string $file, string $current): string
     </a>
     <?php endif; ?>
 
-    <?php if ($__role === 'admin'): ?>
+    <?php if (in_array($__role, ['admin', 'approver'], true)): ?>
     <div class="nav-section-label">Administration</div>
+    <?php if ($__role === 'admin'): ?>
     <a href="users.php" class="nav-link <?= nav_active('users.php', $__current) ?>">
       <i class="bi bi-people"></i><span>User Management</span>
     </a>
     <a href="departments.php" class="nav-link <?= nav_active('departments.php', $__current) ?>">
       <i class="bi bi-building"></i><span>Departments</span>
     </a>
+    <?php endif; ?>
     <a href="documents.php?archived=1" class="nav-link">
       <i class="bi bi-archive"></i><span>Archived Documents</span>
     </a>

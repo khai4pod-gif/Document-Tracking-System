@@ -33,7 +33,7 @@ include __DIR__ . '/includes/header.php';
         <thead>
           <tr>
             <th>Name</th><th>Username</th><th>Email</th><th>Role</th>
-            <th>Department</th><th>Last Login</th><th>Status</th><th class="text-end">Actions</th>
+            <th>Department</th><th>Routing</th><th>Last Login</th><th>Status</th><th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -72,6 +72,7 @@ include __DIR__ . '/includes/header.php';
                 <option value="admin">Admin</option>
                 <option value="department" selected>Department User</option>
                 <option value="logistics">Logistics / Relief Officer</option>
+                <option value="approver">Approver</option>
               </select>
             </div>
             <div class="col-md-6">
@@ -82,6 +83,13 @@ include __DIR__ . '/includes/header.php';
                   <option value="<?= (int)$dept['id'] ?>"><?= e($dept['name']) ?></option>
                 <?php endforeach; ?>
               </select>
+            </div>
+            <div class="col-md-6 d-flex align-items-end" id="canRouteWrapper" style="display:none;">
+              <div class="form-check">
+                <input type="checkbox" name="can_route" id="fieldCanRoute" class="form-check-input" checked>
+                <label class="form-check-label" for="fieldCanRoute">Allow Routing</label>
+                <div class="form-text">If unchecked, this Department account can create and view documents but cannot route them to other users/offices.</div>
+              </div>
             </div>
             <div class="col-md-6" id="passwordWrapper">
               <label class="form-label">Password <span class="text-danger">*</span></label>

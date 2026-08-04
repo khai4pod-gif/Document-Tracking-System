@@ -93,10 +93,32 @@ class Document
             $params['search'] = '%' . $filters['search'] . '%';
         }
 
+        // Restrict non-admin/logistics users to documents tied to their department.
+        if (!empty($filters['scope'])) {
+            $scope = $filters['scope'];
+            if (!empty($scope['department_id'])) {
+                $where[] = '(d.origin_department_id = :scopeDept
+                              OR holder.department_id = :scopeDeptHolder
+                              OR EXISTS (
+                                  SELECT 1 FROM document_routes r
+                                  WHERE r.document_id = d.id
+                                    AND (r.from_department_id = :scopeDeptFrom OR r.to_department_id = :scopeDeptTo)
+                              ))';
+                $params['scopeDept']       = $scope['department_id'];
+                $params['scopeDeptHolder'] = $scope['department_id'];
+                $params['scopeDeptFrom']   = $scope['department_id'];
+                $params['scopeDeptTo']     = $scope['department_id'];
+            } else {
+                $where[] = '(d.created_by = :scopeUser OR d.current_holder_id = :scopeUserHolder)';
+                $params['scopeUser']       = $scope['user_id'];
+                $params['scopeUserHolder'] = $scope['user_id'];
+            }
+        }
+
         $whereSql = 'WHERE ' . implode(' AND ', $where);
 
         $sql = "SELECT d.id, d.tracking_number, d.title, d.doc_type, d.priority, d.status,
-                       d.due_date, d.created_at, d.is_archived,
+                       d.due_date, d.created_at, d.is_archived, d.approval_status,
                        creator.full_name AS creator_name,
                        holder.full_name AS holder_name
                 FROM documents d
@@ -131,20 +153,67 @@ class Document
         return $row ?: null;
     }
 
+    /**
+     * Admins and logistics staff can access every document. 'department'
+     * role users may only access documents that originated in their
+     * department, are currently held by someone in their department, or
+     * have passed through their department via routing.
+     */
+    public function isAccessibleTo(array $doc, array $user): bool
+    {
+        if (in_array($user['role'], ['admin', 'logistics', 'approver'], true)) {
+            return true;
+        }
+
+        $deptId = $user['department_id'] ?? null;
+
+        if ($deptId === null) {
+            return (int)($doc['created_by'] ?? 0) === (int)$user['id']
+                || (int)($doc['current_holder_id'] ?? 0) === (int)$user['id'];
+        }
+
+        if ((int)($doc['origin_department_id'] ?? 0) === (int)$deptId) {
+            return true;
+        }
+
+        $stmt = $this->pdo->prepare("SELECT department_id FROM users WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $doc['current_holder_id']]);
+        $holderDept = $stmt->fetchColumn();
+        if ($holderDept !== false && $holderDept !== null && (int)$holderDept === (int)$deptId) {
+            return true;
+        }
+
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) AS cnt FROM document_routes
+             WHERE document_id = :doc AND (from_department_id = :dept1 OR to_department_id = :dept2)"
+        );
+        $stmt->execute(['doc' => $doc['id'], 'dept1' => $deptId, 'dept2' => $deptId]);
+        return (int)$stmt->fetch()['cnt'] > 0;
+    }
+
     // -------------------------------------------------------------
     // CREATE / UPDATE / ARCHIVE
     // -------------------------------------------------------------
 
+    /**
+     * @param array $data Must include 'creator_role' so the approval gate
+     *                     can be applied: documents created by a
+     *                     'department' user start life as 'Pending'. They
+     *                     may be routed freely, but cannot be marked
+     *                     completed until an admin/approver signs off.
+     */
     public function create(array $data, int $userId): array
     {
         $trackingNumber = generate_tracking_number($this->pdo);
+        $approvalStatus = ($data['creator_role'] ?? '') === 'department' ? 'Pending' : 'Not Required';
 
         $sql = "INSERT INTO documents
                     (tracking_number, title, doc_type, priority, description,
-                     status, origin_department_id, created_by, current_holder_id, due_date, created_at)
+                     status, origin_department_id, created_by, current_holder_id, due_date,
+                     approval_status, created_at)
                 VALUES
                     (:tn, :title, :type, :priority, :description,
-                     'Draft', :dept, :creator, :holder, :due, NOW())";
+                     'Draft', :dept, :creator, :holder, :due, :approval, NOW())";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             'tn'          => $trackingNumber,
@@ -156,6 +225,7 @@ class Document
             'creator'     => $userId,
             'holder'      => $userId,
             'due'         => $data['due_date'] ?: null,
+            'approval'    => $approvalStatus,
         ]);
 
         $newId = (int)$this->pdo->lastInsertId();
@@ -164,6 +234,12 @@ class Document
         return ['id' => $newId, 'tracking_number' => $trackingNumber];
     }
 
+    /**
+     * Editing a previously-rejected document is treated as a resubmission:
+     * its approval gate resets to 'Pending' (and the old decision is
+     * cleared) so it goes back through the approver before it can be
+     * routed again. Documents in any other approval state are unaffected.
+     */
     public function update(int $id, array $data, int $userId): bool
     {
         $sql = "UPDATE documents SET
@@ -172,6 +248,9 @@ class Document
                     priority = :priority,
                     description = :description,
                     due_date = :due,
+                    approved_by = CASE WHEN approval_status = 'Rejected' THEN NULL ELSE approved_by END,
+                    approved_at = CASE WHEN approval_status = 'Rejected' THEN NULL ELSE approved_at END,
+                    approval_status = CASE WHEN approval_status = 'Rejected' THEN 'Pending' ELSE approval_status END,
                     updated_at = NOW()
                 WHERE id = :id AND is_archived = 0";
         $stmt = $this->pdo->prepare($sql);
@@ -220,6 +299,31 @@ class Document
             log_document_action($this->pdo, $id, $userId, 'Completed', 'Document marked as completed.');
         }
         return $ok;
+    }
+
+    /**
+     * Admin/approver signs off on (or rejects) a document that's awaiting
+     * approval. Only has an effect while approval_status is 'Pending'.
+     */
+    public function decideApproval(int $id, int $approverId, string $decision, ?string $remarks = null): bool
+    {
+        if (!in_array($decision, ['Approved', 'Rejected'], true)) {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare(
+            "UPDATE documents SET approval_status = :decision, approved_by = :approver, approved_at = NOW(), updated_at = NOW()
+             WHERE id = :id AND approval_status = 'Pending'"
+        );
+        $stmt->execute(['decision' => $decision, 'approver' => $approverId, 'id' => $id]);
+
+        if ($stmt->rowCount() === 0) {
+            return false;
+        }
+
+        $action = $decision === 'Approved' ? 'Approved' : 'Rejected';
+        log_document_action($this->pdo, $id, $approverId, $action, $remarks ?: null);
+        return true;
     }
 
     // -------------------------------------------------------------

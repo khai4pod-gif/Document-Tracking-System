@@ -23,6 +23,14 @@ if (!$doc) {
     die('Document not found.');
 }
 
+if (!$documentModel->isAccessibleTo($doc, current_user())) {
+    if (($_GET['format'] ?? '') === 'json') {
+        json_response(['success' => false, 'message' => 'Access denied: this document belongs to another department.'], 403);
+    }
+    http_response_code(403);
+    die('Access denied: this document belongs to another department.');
+}
+
 // ---- JSON mode (consumed by the Edit modal) ----
 if (($_GET['format'] ?? '') === 'json') {
     json_response([
@@ -56,7 +64,14 @@ $logIcons = [
     'Created' => 'bi-file-earmark-plus', 'Updated' => 'bi-pencil-square', 'Routed' => 'bi-signpost-split',
     'Received' => 'bi-inbox', 'Completed' => 'bi-check-circle', 'Archived' => 'bi-archive',
     'Restored' => 'bi-arrow-counterclockwise', 'Attachment Added' => 'bi-paperclip', 'Attachment Removed' => 'bi-x-circle',
+    'Approved' => 'bi-patch-check', 'Rejected' => 'bi-x-octagon',
 ];
+
+$canApprove = in_array(current_user()['role'], ['admin', 'approver'], true);
+$isPendingApproval = $doc['approval_status'] === 'Pending';
+$canRoute = user_can_route(current_user(), $pdo);
+// Approval gates closing the document out, not moving it along.
+$blocksCompletion = in_array($doc['approval_status'], ['Pending', 'Rejected'], true);
 
 $pageTitle = $doc['tracking_number'];
 $pageIcon  = 'bi-file-earmark-text';
@@ -71,6 +86,9 @@ include __DIR__ . '/includes/header.php';
       <span class="tracking-chip"><?= e($doc['tracking_number']) ?></span>
       <span class="badge <?= badge_class_for_priority($doc['priority']) ?>"><?= e($doc['priority']) ?></span>
       <span class="badge <?= badge_class_for_status($doc['status']) ?>"><?= e($doc['status']) ?></span>
+      <?php if ($doc['approval_status'] !== 'Not Required'): ?>
+        <span class="badge <?= badge_class_for_approval($doc['approval_status']) ?>"><?= e($doc['approval_status']) ?> Approval</span>
+      <?php endif; ?>
       <?php if ((int)$doc['is_archived'] === 1): ?><span class="badge bg-dark">Archived</span><?php endif; ?>
     </div>
     <div class="mt-2 bg-white d-inline-block p-2 rounded border text-center">
@@ -81,13 +99,29 @@ include __DIR__ . '/includes/header.php';
 
   <div class="d-flex gap-2 flex-wrap">
     <?php if ((int)$doc['is_archived'] === 0): ?>
+      <?php if ($isPendingApproval && $canApprove): ?>
+        <button class="btn btn-success btn-sm" id="btnApproveDoc"><i class="bi bi-patch-check me-1"></i> Approve</button>
+        <button class="btn btn-outline-danger btn-sm" id="btnRejectDoc"><i class="bi bi-x-octagon me-1"></i> Reject</button>
+      <?php endif; ?>
       <?php if ($pendingRouteForMe): ?>
         <button class="btn btn-success btn-sm" id="btnAcknowledge" data-route-id="<?= (int)$pendingRouteForMe['id'] ?>">
           <i class="bi bi-inbox-fill me-1"></i> Acknowledge Receipt
         </button>
       <?php endif; ?>
-      <button class="btn btn-outline-primary btn-sm" id="btnRouteDoc"><i class="bi bi-signpost-split me-1"></i> Route</button>
-      <button class="btn btn-outline-success btn-sm" id="btnMarkComplete"><i class="bi bi-check-circle me-1"></i> Mark Completed</button>
+      <?php if (!$canRoute): ?>
+        <button class="btn btn-outline-primary btn-sm" disabled title="Your account does not have permission to route documents.">
+          <i class="bi bi-signpost-split me-1"></i> Route
+        </button>
+      <?php else: ?>
+        <button class="btn btn-outline-primary btn-sm" id="btnRouteDoc"><i class="bi bi-signpost-split me-1"></i> Route</button>
+      <?php endif; ?>
+      <?php if ($blocksCompletion): ?>
+        <button class="btn btn-outline-success btn-sm" disabled title="This document must be approved before it can be marked completed.">
+          <i class="bi bi-check-circle me-1"></i> Mark Completed
+        </button>
+      <?php else: ?>
+        <button class="btn btn-outline-success btn-sm" id="btnMarkComplete"><i class="bi bi-check-circle me-1"></i> Mark Completed</button>
+      <?php endif; ?>
       <button class="btn btn-outline-secondary btn-sm" id="btnUploadAttachment"><i class="bi bi-paperclip me-1"></i> Add Attachment</button>
     <?php endif; ?>
     <button class="btn btn-outline-dark btn-sm" id="btnPrintSlip" onclick="window.print()"><i class="bi bi-printer me-1"></i> Print</button>

@@ -21,8 +21,10 @@ $fullName  = trim((string)($_POST['full_name'] ?? ''));
 $role      = (string)($_POST['role'] ?? 'department');
 $deptId    = $_POST['department_id'] !== '' ? (int)$_POST['department_id'] : null;
 $password  = (string)($_POST['password'] ?? '');
+// The routing toggle only applies to Department accounts; other roles always retain full access.
+$canRoute  = $role === 'department' ? !empty($_POST['can_route']) : true;
 
-$validRoles = ['admin', 'department', 'logistics'];
+$validRoles = ['admin', 'department', 'logistics', 'approver'];
 
 $errors = [];
 if ($username === '' || !preg_match('/^[a-zA-Z0-9._-]{3,50}$/', $username)) {
@@ -55,6 +57,7 @@ if ($userManager->usernameOrEmailExists($username, $email, $id > 0 ? $id : null)
 $data = [
     'username' => $username, 'email' => $email, 'full_name' => $fullName,
     'role' => $role, 'department_id' => $deptId, 'password' => $password,
+    'can_route' => $canRoute,
 ];
 
 try {

@@ -102,6 +102,9 @@ CREATE TABLE IF NOT EXISTS `documents` (
   `created_by` int unsigned NOT NULL,
   `current_holder_id` int unsigned DEFAULT NULL,
   `due_date` date DEFAULT NULL,
+  `approval_status` enum('Not Required','Pending','Approved','Rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Not Required',
+  `approved_by` int unsigned DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
   `is_archived` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -110,12 +113,15 @@ CREATE TABLE IF NOT EXISTS `documents` (
   KEY `fk_documents_origin_dept` (`origin_department_id`),
   KEY `fk_documents_created_by` (`created_by`),
   KEY `fk_documents_current_holder` (`current_holder_id`),
+  KEY `fk_documents_approved_by` (`approved_by`),
   KEY `idx_documents_status` (`status`),
   KEY `idx_documents_archived` (`is_archived`),
+  KEY `idx_documents_approval_status` (`approval_status`),
   FULLTEXT KEY `ft_documents_title_desc` (`title`,`description`),
   CONSTRAINT `fk_documents_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_documents_current_holder` FOREIGN KEY (`current_holder_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_documents_origin_dept` FOREIGN KEY (`origin_department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_documents_origin_dept` FOREIGN KEY (`origin_department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_documents_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Dumping data for table dts_drds.documents: ~3 rows (approximately)
@@ -151,7 +157,7 @@ CREATE TABLE IF NOT EXISTS `document_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `document_id` int unsigned NOT NULL,
   `user_id` int unsigned NOT NULL,
-  `action` enum('Created','Updated','Routed','Received','Completed','Archived','Restored','Attachment Added','Attachment Removed') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `action` enum('Created','Updated','Routed','Received','Completed','Archived','Restored','Attachment Added','Attachment Removed','Approved','Rejected') COLLATE utf8mb4_unicode_ci NOT NULL,
   `details` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -310,8 +316,9 @@ CREATE TABLE IF NOT EXISTS `users` (
   `email` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
   `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `full_name` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `role` enum('admin','department','logistics') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'department',
+  `role` enum('admin','department','logistics','approver') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'department',
   `department_id` int unsigned DEFAULT NULL,
+  `can_route` tinyint(1) NOT NULL DEFAULT '1',
   `avatar_path` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `last_login_at` datetime DEFAULT NULL,

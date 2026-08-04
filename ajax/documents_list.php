@@ -12,6 +12,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $pdo = Database::getConnection();
 $documentModel = new Document($pdo);
+$user = current_user();
 
 $filters = [
     'archived' => (isset($_GET['archived']) && $_GET['archived'] === '1'),
@@ -19,6 +20,10 @@ $filters = [
     'priority' => $_GET['priority'] ?? '',
     'search'   => $_GET['search'] ?? '',
 ];
+
+if (!in_array($user['role'], ['admin', 'logistics', 'approver'], true)) {
+    $filters['scope'] = ['department_id' => $user['department_id'], 'user_id' => (int)$user['id']];
+}
 
 $rows = $documentModel->listForTable($filters);
 
@@ -30,6 +35,7 @@ $data = array_map(static function (array $r): array {
         'doc_type'        => $r['doc_type'],
         'priority'        => $r['priority'],
         'status'          => $r['status'],
+        'approval_status' => $r['approval_status'],
         'holder_name'     => $r['holder_name'] ?? '—',
         'creator_name'    => $r['creator_name'],
         'created_at'      => date('M d, Y g:i A', strtotime($r['created_at'])),

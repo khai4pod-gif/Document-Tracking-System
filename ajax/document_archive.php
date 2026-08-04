@@ -29,6 +29,18 @@ $existing = $documentModel->find($documentId);
 if (!$existing) {
     json_response(['success' => false, 'message' => 'Document not found.'], 404);
 }
+if (!$documentModel->isAccessibleTo($existing, current_user())) {
+    json_response(['success' => false, 'message' => 'Access denied: this document belongs to another department.'], 403);
+}
+
+// Approval is the checkpoint at the END of the workflow: a document may be
+// routed freely, but cannot be closed out until an approver has signed off.
+if ($action === 'complete' && in_array($existing['approval_status'], ['Pending', 'Rejected'], true)) {
+    $reason = $existing['approval_status'] === 'Pending'
+        ? 'This document is still awaiting approval and cannot be marked completed yet.'
+        : 'This document was rejected. It must be revised and approved before it can be marked completed.';
+    json_response(['success' => false, 'message' => $reason], 422);
+}
 
 $ok = match ($action) {
     'archive'  => $documentModel->archive($documentId, $userId),

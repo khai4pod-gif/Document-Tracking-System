@@ -31,8 +31,9 @@ CREATE TABLE `users` (
   `email` VARCHAR(150) NOT NULL UNIQUE,
   `password_hash` VARCHAR(255) NOT NULL,
   `full_name` VARCHAR(150) NOT NULL,
-  `role` ENUM('admin','department','logistics') NOT NULL DEFAULT 'department',
+  `role` ENUM('admin','department','logistics','approver') NOT NULL DEFAULT 'department',
   `department_id` INT UNSIGNED DEFAULT NULL,
+  `can_route` TINYINT(1) NOT NULL DEFAULT 1,
   `avatar_path` VARCHAR(255) DEFAULT NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `last_login_at` DATETIME DEFAULT NULL,
@@ -68,6 +69,9 @@ CREATE TABLE `documents` (
   `created_by` INT UNSIGNED NOT NULL,
   `current_holder_id` INT UNSIGNED DEFAULT NULL,
   `due_date` DATE DEFAULT NULL,
+  `approval_status` ENUM('Not Required','Pending','Approved','Rejected') NOT NULL DEFAULT 'Not Required',
+  `approved_by` INT UNSIGNED DEFAULT NULL,
+  `approved_at` DATETIME DEFAULT NULL,
   `is_archived` TINYINT(1) NOT NULL DEFAULT 0,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -77,8 +81,11 @@ CREATE TABLE `documents` (
       REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_documents_current_holder` FOREIGN KEY (`current_holder_id`)
       REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_documents_approved_by` FOREIGN KEY (`approved_by`)
+      REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   INDEX `idx_documents_status` (`status`),
   INDEX `idx_documents_archived` (`is_archived`),
+  INDEX `idx_documents_approval_status` (`approval_status`),
   FULLTEXT INDEX `ft_documents_title_desc` (`title`, `description`)
 ) ENGINE=InnoDB;
 
@@ -129,7 +136,7 @@ CREATE TABLE `document_logs` (
   `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `document_id` INT UNSIGNED NOT NULL,
   `user_id` INT UNSIGNED NOT NULL,
-  `action` ENUM('Created','Updated','Routed','Received','Completed','Archived','Restored','Attachment Added','Attachment Removed') NOT NULL,
+  `action` ENUM('Created','Updated','Routed','Received','Completed','Archived','Restored','Attachment Added','Attachment Removed','Approved','Rejected') NOT NULL,
   `details` VARCHAR(500) DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_logs_document` FOREIGN KEY (`document_id`)

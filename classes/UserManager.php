@@ -18,7 +18,7 @@ class UserManager
 
     public function listUsers(): array
     {
-        $sql = "SELECT u.id, u.username, u.email, u.full_name, u.role, u.is_active,
+        $sql = "SELECT u.id, u.username, u.email, u.full_name, u.role, u.can_route, u.is_active,
                        u.last_login_at, u.created_at, d.name AS department_name, u.department_id
                 FROM users u
                 LEFT JOIN departments d ON d.id = u.department_id
@@ -29,7 +29,7 @@ class UserManager
     public function findUser(int $id): ?array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT id, username, email, full_name, role, department_id, is_active
+            "SELECT id, username, email, full_name, role, department_id, can_route, is_active
              FROM users WHERE id = :id LIMIT 1"
         );
         $stmt->execute(['id' => $id]);
@@ -52,8 +52,8 @@ class UserManager
 
     public function createUser(array $data): int
     {
-        $sql = "INSERT INTO users (username, email, password_hash, full_name, role, department_id, is_active, created_at)
-                VALUES (:username, :email, :password, :name, :role, :dept, 1, NOW())";
+        $sql = "INSERT INTO users (username, email, password_hash, full_name, role, department_id, can_route, is_active, created_at)
+                VALUES (:username, :email, :password, :name, :role, :dept, :canRoute, 1, NOW())";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             'username' => $data['username'],
@@ -62,6 +62,7 @@ class UserManager
             'name'     => $data['full_name'],
             'role'     => $data['role'],
             'dept'     => $data['department_id'] ?: null,
+            'canRoute' => !empty($data['can_route']) ? 1 : 0,
         ]);
         return (int)$this->pdo->lastInsertId();
     }
@@ -70,7 +71,7 @@ class UserManager
     {
         $sql = "UPDATE users SET
                     username = :username, email = :email, full_name = :name,
-                    role = :role, department_id = :dept, updated_at = NOW()
+                    role = :role, department_id = :dept, can_route = :canRoute, updated_at = NOW()
                 WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute([
@@ -79,6 +80,7 @@ class UserManager
             'name'     => $data['full_name'],
             'role'     => $data['role'],
             'dept'     => $data['department_id'] ?: null,
+            'canRoute' => !empty($data['can_route']) ? 1 : 0,
             'id'       => $id,
         ]);
     }

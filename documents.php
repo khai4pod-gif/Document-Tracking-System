@@ -9,6 +9,7 @@ require_once __DIR__ . '/config/config.php';
 require_login();
 
 $showArchived = isset($_GET['archived']) && $_GET['archived'] === '1';
+$canRoute = user_can_route(current_user(), Database::getConnection());
 
 $pageTitle = $showArchived ? 'Archived Documents' : 'Documents';
 $pageIcon  = $showArchived ? 'bi-archive' : 'bi-file-earmark-text';
@@ -57,6 +58,7 @@ include __DIR__ . '/includes/header.php';
             <th>Type</th>
             <th>Priority</th>
             <th>Status</th>
+            <th>Approval</th>
             <th>Current Holder</th>
             <th>Created</th>
             <th class="text-end">Actions</th>
@@ -275,9 +277,11 @@ include __DIR__ . '/includes/header.php';
 $extraScripts = <<<'HTML'
 <script>
 const SHOW_ARCHIVED = ARCHIVED_FLAG;
+const CAN_ROUTE = CAN_ROUTE_FLAG;
 </script>
 HTML;
 $extraScripts = str_replace('ARCHIVED_FLAG', $showArchived ? 'true' : 'false', $extraScripts);
+$extraScripts = str_replace('CAN_ROUTE_FLAG', $canRoute ? 'true' : 'false', $extraScripts);
 $extraScripts .= '<script src="assets/js/documents.js"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

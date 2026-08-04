@@ -21,6 +21,7 @@ $data = array_map(static function (array $r): array {
         'email'            => $r['email'],
         'full_name'        => $r['full_name'],
         'role'             => $r['role'],
+        'can_route'        => (int)$r['can_route'],
         'department_id'    => $r['department_id'] !== null ? (int)$r['department_id'] : null,
         'department_name'  => $r['department_name'],
         'is_active'        => (int)$r['is_active'],

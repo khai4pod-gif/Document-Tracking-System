@@ -26,9 +26,16 @@ $pdo = Database::getConnection();
 $documentModel = new Document($pdo);
 $fromUser = current_user();
 
+if (!user_can_route($fromUser, $pdo)) {
+    json_response(['success' => false, 'message' => 'Your account does not have permission to route documents. Contact an administrator.'], 403);
+}
+
 $doc = $documentModel->find($documentId);
 if (!$doc) {
     json_response(['success' => false, 'message' => 'Document not found.'], 404);
+}
+if (!$documentModel->isAccessibleTo($doc, $fromUser)) {
+    json_response(['success' => false, 'message' => 'Access denied: this document belongs to another department.'], 403);
 }
 if ((int)$doc['is_archived'] === 1) {
     json_response(['success' => false, 'message' => 'Archived documents cannot be routed.'], 422);

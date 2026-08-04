@@ -128,6 +128,21 @@ function require_role(array $roles): void
     }
 }
 
+/**
+ * Only Department accounts are ever gated by the can_route flag; every
+ * other role can always route. Queried fresh (not from the session) so
+ * an admin revoking access takes effect on the user's very next request.
+ */
+function user_can_route(array $user, PDO $pdo): bool
+{
+    if ($user['role'] !== 'department') {
+        return true;
+    }
+    $stmt = $pdo->prepare("SELECT can_route FROM users WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $user['id']]);
+    return (int)$stmt->fetchColumn() === 1;
+}
+
 function redirect(string $path): void
 {
     header('Location: ' . BASE_URL . ltrim($path, '/'));
@@ -196,5 +211,15 @@ function badge_class_for_status(string $status): string
         'Pending Routing'  => 'bg-warning text-dark',
         'Received'         => 'bg-info text-dark',
         default            => 'bg-secondary', // Draft
+    };
+}
+
+function badge_class_for_approval(string $approvalStatus): string
+{
+    return match ($approvalStatus) {
+        'Pending'  => 'bg-warning text-dark',
+        'Approved' => 'bg-success',
+        'Rejected' => 'bg-danger',
+        default    => 'bg-secondary', // Not Required
     };
 }

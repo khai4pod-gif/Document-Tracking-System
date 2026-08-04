@@ -24,8 +24,11 @@ if (!$attachment || !is_file($attachment['file_path'])) {
     die('File not found.');
 }
 
-// Any authenticated user may download (shared records system).
-// Tighten here with department/role checks if stricter access control is required.
+$doc = $documentModel->find((int)$attachment['document_id']);
+if (!$doc || !$documentModel->isAccessibleTo($doc, current_user())) {
+    http_response_code(403);
+    die('Access denied: this document belongs to another department.');
+}
 
 $path = $attachment['file_path'];
 $size = filesize($path);

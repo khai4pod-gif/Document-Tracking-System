@@ -9,6 +9,9 @@ const STATUS_BADGE = {
   Completed: 'bg-success', Overdue: 'bg-danger', 'In Transit': 'bg-primary',
   'Pending Routing': 'bg-warning text-dark', Received: 'bg-info text-dark', Draft: 'bg-secondary',
 };
+const APPROVAL_BADGE = {
+  Pending: 'bg-warning text-dark', Approved: 'bg-success', Rejected: 'bg-danger',
+};
 
 let documentModal, routeModal, documentsTable;
 
@@ -21,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
       url: 'ajax/documents_list.php?archived=' + (SHOW_ARCHIVED ? '1' : '0'),
       dataSrc: 'data',
     },
-    order: [[6, 'desc']],
+    order: [[7, 'desc']],
     dom: "<'d-flex justify-content-between align-items-center mb-2'fB>rt<'d-flex justify-content-between align-items-center mt-2'ip>",
     buttons: ['csv', 'excel', 'print'],
     columns: [
@@ -33,6 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
           ? `<span class="badge ${PRIORITY_BADGE[d] || 'bg-secondary'}">${escapeHtml(d)}</span>` : d },
       { data: 'status', render: (d, t) => t === 'display'
           ? `<span class="badge ${STATUS_BADGE[d] || 'bg-secondary'}">${escapeHtml(d)}</span>` : d },
+      { data: 'approval_status', render: (d, t) => {
+          if (t !== 'display') return d;
+          if (!d || d === 'Not Required') return '<span class="text-muted small">—</span>';
+          return `<span class="badge ${APPROVAL_BADGE[d] || 'bg-secondary'}">${escapeHtml(d)}</span>`;
+        } },
       { data: 'holder_name', render: (d) => escapeHtml(d) },
       { data: 'created_at', render: (d) => escapeHtml(d) },
       {
@@ -42,9 +50,18 @@ document.addEventListener('DOMContentLoaded', () => {
           let actions = `<div class="dropdown"><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button><ul class="dropdown-menu dropdown-menu-end">`;
           actions += `<li><a class="dropdown-item" href="document_view.php?id=${row.id}"><i class="bi bi-eye me-2"></i>View</a></li>`;
           if (!archived) {
+            const awaitingApproval = row.approval_status === 'Pending' || row.approval_status === 'Rejected';
             actions += `<li><a class="dropdown-item action-edit" href="#" data-id="${row.id}"><i class="bi bi-pencil me-2"></i>Edit</a></li>`;
-            actions += `<li><a class="dropdown-item action-route" href="#" data-id="${row.id}"><i class="bi bi-signpost-split me-2"></i>Route</a></li>`;
-            actions += `<li><a class="dropdown-item action-complete" href="#" data-id="${row.id}"><i class="bi bi-check-circle me-2"></i>Mark Completed</a></li>`;
+            if (!CAN_ROUTE) {
+              actions += `<li><span class="dropdown-item disabled" title="Your account does not have permission to route documents."><i class="bi bi-signpost-split me-2"></i>Route</span></li>`;
+            } else {
+              actions += `<li><a class="dropdown-item action-route" href="#" data-id="${row.id}"><i class="bi bi-signpost-split me-2"></i>Route</a></li>`;
+            }
+            if (awaitingApproval) {
+              actions += `<li><span class="dropdown-item disabled" title="This document must be approved before it can be marked completed."><i class="bi bi-check-circle me-2"></i>Mark Completed</span></li>`;
+            } else {
+              actions += `<li><a class="dropdown-item action-complete" href="#" data-id="${row.id}"><i class="bi bi-check-circle me-2"></i>Mark Completed</a></li>`;
+            }
             actions += `<li><hr class="dropdown-divider"></li>`;
             actions += `<li><a class="dropdown-item text-danger action-archive" href="#" data-id="${row.id}"><i class="bi bi-archive me-2"></i>Archive</a></li>`;
           } else {

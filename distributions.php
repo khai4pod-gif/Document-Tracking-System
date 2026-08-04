@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/config/config.php';
-require_role(['admin', 'logistics']);
+require_role(['admin', 'logistics', 'approver']);
 
 $pageTitle = 'Relief Distributions';
 $pageIcon  = 'bi-truck';

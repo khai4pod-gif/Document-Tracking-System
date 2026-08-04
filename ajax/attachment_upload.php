@@ -25,6 +25,9 @@ $doc = $documentModel->find($documentId);
 if (!$doc) {
     json_response(['success' => false, 'message' => 'Document not found.'], 404);
 }
+if (!$documentModel->isAccessibleTo($doc, current_user())) {
+    json_response(['success' => false, 'message' => 'Access denied: this document belongs to another department.'], 403);
+}
 
 if (empty($_FILES['attachment']['name'])) {
     json_response(['success' => false, 'message' => 'Please choose a file to upload.'], 422);

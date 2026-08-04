@@ -53,6 +53,7 @@ $data = [
     'description'           => $description,
     'due_date'              => $dueDate ?: null,
     'origin_department_id'  => $user['department_id'],
+    'creator_role'          => $user['role'],
 ];
 
 try {
@@ -61,6 +62,9 @@ try {
         $existing = $documentModel->find($documentId);
         if (!$existing) {
             json_response(['success' => false, 'message' => 'Document not found.'], 404);
+        }
+        if (!$documentModel->isAccessibleTo($existing, $user)) {
+            json_response(['success' => false, 'message' => 'Access denied: this document belongs to another department.'], 403);
         }
         $ok = $documentModel->update($documentId, $data, (int)$user['id']);
         if (!$ok) {

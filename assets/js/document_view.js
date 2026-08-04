@@ -46,6 +46,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const btnApprove = document.getElementById('btnApproveDoc');
+  if (btnApprove) {
+    btnApprove.addEventListener('click', async () => {
+      const confirmed = await confirmAction('Approve this document?', 'It will become eligible for routing.', 'Yes, approve');
+      if (!confirmed) return;
+      const res = await apiPost('ajax/document_approve.php', { document_id: getDocumentId(), decision: 'approve' });
+      if (res.success) { notify('success', res.message); setTimeout(() => window.location.reload(), 900); }
+    });
+  }
+
+  const btnReject = document.getElementById('btnRejectDoc');
+  if (btnReject) {
+    btnReject.addEventListener('click', async () => {
+      const confirmed = await confirmAction('Reject this document?', 'The submitter will need to revise and resubmit.', 'Yes, reject');
+      if (!confirmed) return;
+      const res = await apiPost('ajax/document_approve.php', { document_id: getDocumentId(), decision: 'reject' });
+      if (res.success) { notify('success', res.message); setTimeout(() => window.location.reload(), 900); }
+    });
+  }
+
   const btnAck = document.getElementById('btnAcknowledge');
   if (btnAck) {
     btnAck.addEventListener('click', async () => {

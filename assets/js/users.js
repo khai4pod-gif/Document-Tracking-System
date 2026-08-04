@@ -5,8 +5,8 @@
 
 let userModal, resetPasswordModal, usersTable, USERS_CACHE = [];
 
-const ROLE_LABEL = { admin: 'Admin', department: 'Department User', logistics: 'Logistics / Relief' };
-const ROLE_BADGE = { admin: 'bg-primary', department: 'bg-info text-dark', logistics: 'bg-warning text-dark' };
+const ROLE_LABEL = { admin: 'Admin', department: 'Department User', logistics: 'Logistics / Relief', approver: 'Approver' };
+const ROLE_BADGE = { admin: 'bg-primary', department: 'bg-info text-dark', logistics: 'bg-warning text-dark', approver: 'bg-success' };
 
 document.addEventListener('DOMContentLoaded', () => {
   userModal = new bootstrap.Modal(document.getElementById('userModal'));
@@ -24,6 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
       { data: 'email', render: (d) => escapeHtml(d) },
       { data: 'role', render: (d) => `<span class="badge ${ROLE_BADGE[d] || 'bg-secondary'}">${ROLE_LABEL[d] || escapeHtml(d)}</span>` },
       { data: 'department_name', render: (d) => d ? escapeHtml(d) : '—' },
+      { data: null, render: (row) => row.role !== 'department'
+          ? '<span class="text-muted small">—</span>'
+          : (row.can_route ? '<span class="badge bg-success">Allowed</span>' : '<span class="badge bg-secondary">Restricted</span>') },
       { data: 'last_login_at' },
       { data: 'is_active', render: (d) => d ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>' },
       {
@@ -44,11 +47,19 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
   });
 
+  function toggleCanRouteWrapper() {
+    const isDept = document.getElementById('fieldRole').value === 'department';
+    document.getElementById('canRouteWrapper').style.display = isDept ? '' : 'none';
+  }
+  document.getElementById('fieldRole').addEventListener('change', toggleCanRouteWrapper);
+
   document.getElementById('btnNewUser').addEventListener('click', () => {
     document.getElementById('userForm').reset();
     document.getElementById('userId').value = '';
     document.getElementById('fieldPassword').required = true;
     document.getElementById('passwordWrapper').style.display = '';
+    document.getElementById('fieldCanRoute').checked = true;
+    toggleCanRouteWrapper();
     document.getElementById('userModalLabel').innerHTML = '<i class="bi bi-person-plus me-2"></i>New User';
     userModal.show();
   });
@@ -65,6 +76,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('fieldEmail').value = u.email;
     document.getElementById('fieldRole').value = u.role;
     document.getElementById('fieldDepartment').value = u.department_id || '';
+    document.getElementById('fieldCanRoute').checked = !!u.can_route;
+    toggleCanRouteWrapper();
     document.getElementById('fieldPassword').required = false;
     document.getElementById('passwordWrapper').style.display = 'none';
     document.getElementById('userModalLabel').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Edit User';

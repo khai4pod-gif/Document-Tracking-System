@@ -157,11 +157,6 @@ $pageTitle = 'Login';
     background:#eef3fb;color:var(--navy-800);padding:4px 10px;border-radius:20px;margin-right:6px;
   }
   .alert{border-radius:10px;font-size:.88rem;}
-  .demo-box{
-    background:var(--paper);border:1px dashed #d7dee8;border-radius:12px;padding:14px 16px;font-size:.78rem;color:#586173;margin-top:24px;
-  }
-  .demo-box code{color:var(--navy-800);}
-
   .logo-row{
     display:flex;align-items:center;gap:14px;margin-bottom:24px;
   }
@@ -268,11 +263,6 @@ $pageTitle = 'Login';
 
       <button type="submit" class="btn btn-login btn-primary w-100 text-white">Sign In</button>
     </form>
-
-    <div class="demo-box">
-      <strong>Demo accounts</strong> (password: <code>Passw0rd!123</code>)<br>
-      <code>admin</code> · <code>drms_user</code> · <code>logistics1</code>
-    </div>
   </div>
 </div>
 
