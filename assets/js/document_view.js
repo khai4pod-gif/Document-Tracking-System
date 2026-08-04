@@ -1,0 +1,103 @@
+/**
+ * assets/js/document_view.js
+ * Powers document_view.php: routing, acknowledgment, completion,
+ * and attachment upload/delete actions.
+ */
+
+function getDocumentId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('id');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const routeModalEl = document.getElementById('routeModal');
+  const attachmentModalEl = document.getElementById('attachmentModal');
+  const routeModal = routeModalEl ? new bootstrap.Modal(routeModalEl) : null;
+  const attachmentModal = attachmentModalEl ? new bootstrap.Modal(attachmentModalEl) : null;
+
+  const btnRoute = document.getElementById('btnRouteDoc');
+  if (btnRoute) {
+    btnRoute.addEventListener('click', () => {
+      loadUsersDropdown();
+      routeModal.show();
+    });
+  }
+
+  const routeForm = document.getElementById('routeForm');
+  if (routeForm) {
+    routeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const res = await apiPost('ajax/document_route.php', fd);
+      if (res.success) {
+        notify('success', res.message);
+        setTimeout(() => window.location.reload(), 900);
+      }
+    });
+  }
+
+  const btnComplete = document.getElementById('btnMarkComplete');
+  if (btnComplete) {
+    btnComplete.addEventListener('click', async () => {
+      const confirmed = await confirmAction('Mark as Completed?', 'This document will be flagged as completed.', 'Yes, mark completed');
+      if (!confirmed) return;
+      const res = await apiPost('ajax/document_archive.php', { document_id: getDocumentId(), action: 'complete' });
+      if (res.success) { notify('success', res.message); setTimeout(() => window.location.reload(), 900); }
+    });
+  }
+
+  const btnAck = document.getElementById('btnAcknowledge');
+  if (btnAck) {
+    btnAck.addEventListener('click', async () => {
+      const res = await apiPost('ajax/document_receive.php', { route_id: btnAck.dataset.routeId });
+      if (res.success) { notify('success', res.message); setTimeout(() => window.location.reload(), 900); }
+    });
+  }
+
+  const btnUpload = document.getElementById('btnUploadAttachment');
+  if (btnUpload) {
+    btnUpload.addEventListener('click', () => attachmentModal.show());
+  }
+
+  const attachmentForm = document.getElementById('attachmentForm');
+  if (attachmentForm) {
+    attachmentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const res = await apiPost('ajax/attachment_upload.php', fd);
+      if (res.success) {
+        notify('success', res.message);
+        setTimeout(() => window.location.reload(), 900);
+      }
+    });
+  }
+
+  document.querySelectorAll('.btn-delete-attachment').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const confirmed = await confirmAction('Remove this attachment?', 'This action cannot be undone.', 'Yes, remove it');
+      if (!confirmed) return;
+      const res = await apiPost('ajax/attachment_delete.php', { attachment_id: btn.dataset.id });
+      if (res.success) {
+        notify('success', res.message);
+        btn.closest('li').remove();
+      }
+    });
+  });
+});
+
+function loadUsersDropdown() {
+  const select = document.getElementById('routeToUser');
+  select.innerHTML = '<option value="">Loading users…</option>';
+  fetch('ajax/users_list.php')
+    .then((r) => r.json())
+    .then((res) => {
+      select.innerHTML = '<option value="">Select recipient…</option>';
+      (res.data || []).forEach((u) => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = `${u.full_name} — ${u.department_name || u.role}`;
+        select.appendChild(opt);
+      });
+    })
+    .catch(() => { select.innerHTML = '<option value="">Failed to load users</option>'; });
+}

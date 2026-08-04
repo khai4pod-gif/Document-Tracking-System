@@ -1,0 +1,7 @@
+# Prevent any script execution inside the uploads directory.
+# All downloads must go through download.php, which enforces authentication.
+<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|cgi|asp|sh)$">
+    Require all denied
+</FilesMatch>
+Options -Indexes -ExecCGI
+php_flag engine off

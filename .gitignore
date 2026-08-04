@@ -1,0 +1,9 @@
+# Uploaded user content — runtime data, not source
+uploads/documents/*
+uploads/manifests/*
+!uploads/documents/.gitkeep
+!uploads/manifests/.gitkeep
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store

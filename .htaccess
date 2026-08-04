@@ -1,0 +1,12 @@
+# Deny direct HTTP access to sensitive application directories.
+# (Nginx deployments: replicate this in the server block — see
+# PRODUCTION_CHECKLIST.md, Nginx does not read .htaccess files.)
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.sql$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+RewriteEngine On
+RewriteRule ^(config|classes|includes)/ - [F,L]
