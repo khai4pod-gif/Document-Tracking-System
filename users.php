@@ -20,7 +20,7 @@ include __DIR__ . '/includes/header.php';
 <div class="d-flex flex-wrap align-items-end justify-content-between mb-4 gap-2">
   <div>
     <div class="section-heading">User Management</div>
-    <div class="section-sub">Create and manage accounts for Admin, Department, and Logistics/Relief users.</div>
+    <div class="section-sub">Create and manage accounts for Administrator, Department, and Logistics/Relief users.</div>
   </div>
   <button class="btn btn-primary" id="btnNewUser"><i class="bi bi-person-plus me-1"></i> New User</button>
 </div>
@@ -69,7 +69,7 @@ include __DIR__ . '/includes/header.php';
             <div class="col-md-6">
               <label class="form-label">Role <span class="text-danger">*</span></label>
               <select name="role" id="fieldRole" class="form-select" required>
-                <option value="admin">Admin</option>
+                <option value="admin">Administrator</option>
                 <option value="department" selected>Department User</option>
                 <option value="logistics">Logistics / Relief Officer</option>
                 <option value="approver">Approver</option>
@@ -132,6 +132,6 @@ include __DIR__ . '/includes/header.php';
 
 <?php
 $extraScripts = '<script>const CURRENT_USER_ID = ' . (int)current_user()['id'] . ';</script>';
-$extraScripts .= '<script src="assets/js/users.js"></script>';
+$extraScripts .= '<script src="' . e(asset('assets/js/users.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

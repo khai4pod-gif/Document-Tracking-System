@@ -7,7 +7,12 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/config/config.php';
-require_role(['admin', 'logistics', 'approver']);
+require_role(['admin', 'logistics', 'approver', 'department']);
+
+// Department accounts get read-only visibility for monitoring (and so they can
+// follow a manifest into the DTS to route it). Only relief staff may record a
+// distribution or change its status.
+$canManageRelief = in_array(current_user()['role'], ['admin', 'logistics', 'approver'], true);
 
 $pageTitle = 'Relief Distributions';
 $pageIcon  = 'bi-truck';
@@ -17,9 +22,13 @@ include __DIR__ . '/includes/header.php';
 <div class="d-flex flex-wrap align-items-end justify-content-between mb-4 gap-2">
   <div>
     <div class="section-heading">Relief Distributions</div>
-    <div class="section-sub">Record relief goods distributed to evacuation centers and generate manifests for approval.</div>
+    <div class="section-sub"><?= $canManageRelief
+        ? 'Record relief goods distributed to evacuation centers and generate manifests for approval.'
+        : 'Monitor relief goods distributed to evacuation centers and track their manifests.' ?></div>
   </div>
+  <?php if ($canManageRelief): ?>
   <button class="btn btn-primary" id="btnNewDistribution"><i class="bi bi-plus-lg me-1"></i> New Distribution</button>
+  <?php endif; ?>
 </div>
 
 <div class="card-panel">
@@ -39,6 +48,7 @@ include __DIR__ . '/includes/header.php';
   </div>
 </div>
 
+<?php if ($canManageRelief): ?>
 <!-- ===================== New Distribution Modal ===================== -->
 <div class="modal fade" id="distributionModal" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -93,6 +103,8 @@ include __DIR__ . '/includes/header.php';
   </div>
 </div>
 
+<?php endif; ?>
+
 <!-- ===================== View Distribution Modal ===================== -->
 <div class="modal fade" id="viewDistributionModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -110,6 +122,7 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php
-$extraScripts = '<script src="assets/js/distributions.js"></script>';
+$extraScripts = '<script>const CAN_MANAGE_RELIEF = ' . ($canManageRelief ? 'true' : 'false') . ';</script>';
+$extraScripts .= '<script src="' . e(asset('assets/js/distributions.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

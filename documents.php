@@ -282,6 +282,6 @@ const CAN_ROUTE = CAN_ROUTE_FLAG;
 HTML;
 $extraScripts = str_replace('ARCHIVED_FLAG', $showArchived ? 'true' : 'false', $extraScripts);
 $extraScripts = str_replace('CAN_ROUTE_FLAG', $canRoute ? 'true' : 'false', $extraScripts);
-$extraScripts .= '<script src="assets/js/documents.js"></script>';
+$extraScripts .= '<script src="' . e(asset('assets/js/documents.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

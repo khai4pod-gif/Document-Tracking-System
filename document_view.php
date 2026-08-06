@@ -367,7 +367,7 @@ include __DIR__ . '/includes/header.php';
               <div class="timeline-item">
                 <span class="timeline-dot"><i class="bi <?= $logIcons[$log['action']] ?? 'bi-dot' ?>"></i></span>
                 <div class="timeline-title"><?= e($log['action']) ?></div>
-                <div class="timeline-detail"><?= e($log['actor_name']) ?> <span class="text-muted">(<?= e(ucfirst($log['actor_role'])) ?>)</span></div>
+                <div class="timeline-detail"><?= e($log['actor_name']) ?> <span class="text-muted">(<?= e(role_label($log['actor_role'])) ?>)</span></div>
                 <?php if ($log['details']): ?><div class="timeline-detail text-muted"><?= e($log['details']) ?></div><?php endif; ?>
                 <div class="timeline-meta"><?= date('M d, Y g:i:s A', strtotime($log['created_at'])) ?></div>
               </div>
@@ -453,6 +453,6 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 </script>';
-$extraScripts .= '<script src="assets/js/document_view.js"></script>';
+$extraScripts .= '<script src="' . e(asset('assets/js/document_view.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

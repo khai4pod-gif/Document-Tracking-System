@@ -219,7 +219,7 @@ $pageTitle = 'Login';
     <p class="subtitle">Sign in to access document tracking and relief operations.</p>
 
     <div class="mb-3">
-      <span class="role-chip">👤 Admin</span>
+      <span class="role-chip">👤 Administrator</span>
       <span class="role-chip">🏢 Department</span>
       <span class="role-chip">🚚 Logistics</span>
     </div>

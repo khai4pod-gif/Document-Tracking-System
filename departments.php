@@ -68,6 +68,6 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php
-$extraScripts = '<script src="assets/js/departments.js"></script>';
+$extraScripts = '<script src="' . e(asset('assets/js/departments.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

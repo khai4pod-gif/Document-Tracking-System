@@ -99,10 +99,10 @@ function nav_active(string $file, string $current): string
     <a href="relief_dashboard.php" class="nav-link <?= nav_active('relief_dashboard.php', $__current) ?>">
       <i class="bi bi-bar-chart-line"></i><span>Relief Dashboard</span>
     </a>
-    <?php if (in_array($__role, ['admin', 'logistics', 'approver'], true)): ?>
     <a href="distributions.php" class="nav-link <?= nav_active('distributions.php', $__current) ?>">
       <i class="bi bi-truck"></i><span>Distributions</span>
     </a>
+    <?php if (in_array($__role, ['admin', 'logistics', 'approver'], true)): ?>
     <a href="inventory.php" class="nav-link <?= nav_active('inventory.php', $__current) ?>">
       <i class="bi bi-boxes"></i><span>Relief Inventory</span>
     </a>

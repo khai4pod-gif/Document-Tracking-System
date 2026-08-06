@@ -12,7 +12,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="assets/js/app.js"></script>
+<script src="<?= e(asset('assets/js/app.js')) ?>"></script>
 <?php if (!empty($extraScripts)) echo $extraScripts; ?>
 </body>
 </html>

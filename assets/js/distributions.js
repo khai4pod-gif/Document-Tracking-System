@@ -14,7 +14,10 @@ const STATUS_BADGE_DIST = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-  distributionModal = new bootstrap.Modal(document.getElementById('distributionModal'));
+  // The creation modal is only rendered for relief staff; read-only
+  // monitoring accounts (Department) get the view modal alone.
+  const distributionModalEl = document.getElementById('distributionModal');
+  distributionModal = distributionModalEl ? new bootstrap.Modal(distributionModalEl) : null;
   viewDistributionModal = new bootstrap.Modal(document.getElementById('viewDistributionModal'));
 
   distributionsTable = $('#distributionsTable').DataTable({
@@ -38,43 +41,52 @@ document.addEventListener('DOMContentLoaded', () => {
     openViewModal($(this).data('id'));
   });
 
-  document.getElementById('btnNewDistribution').addEventListener('click', () => {
-    document.getElementById('distributionForm').reset();
-    document.getElementById('itemRows').innerHTML = '';
-    itemRowCounter = 0;
-    loadCentersDropdown();
-    loadInventoryOptions().then(() => addItemRow());
-    distributionModal.show();
-  });
+  const btnNewDistribution = document.getElementById('btnNewDistribution');
+  if (btnNewDistribution) {
+    btnNewDistribution.addEventListener('click', () => {
+      document.getElementById('distributionForm').reset();
+      document.getElementById('itemRows').innerHTML = '';
+      itemRowCounter = 0;
+      loadCentersDropdown();
+      loadInventoryOptions().then(() => addItemRow());
+      distributionModal.show();
+    });
+  }
 
-  document.getElementById('btnAddItemRow').addEventListener('click', () => addItemRow());
+  const btnAddItemRow = document.getElementById('btnAddItemRow');
+  if (btnAddItemRow) {
+    btnAddItemRow.addEventListener('click', () => addItemRow());
+  }
 
-  document.getElementById('distributionForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  const distributionForm = document.getElementById('distributionForm');
+  if (distributionForm) {
+    distributionForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    const items = [];
-    document.querySelectorAll('.item-row').forEach((row) => {
-      const invId = row.querySelector('.item-select').value;
-      const qty = row.querySelector('.item-qty').value;
-      if (invId && qty && parseInt(qty, 10) > 0) {
-        items.push({ inventory_id: invId, quantity: qty });
+      const items = [];
+      document.querySelectorAll('.item-row').forEach((row) => {
+        const invId = row.querySelector('.item-select').value;
+        const qty = row.querySelector('.item-qty').value;
+        if (invId && qty && parseInt(qty, 10) > 0) {
+          items.push({ inventory_id: invId, quantity: qty });
+        }
+      });
+      if (items.length === 0) {
+        notify('error', 'Please add at least one relief item with a quantity.');
+        return;
+      }
+
+      const fd = new FormData(e.target);
+      fd.append('items', JSON.stringify(items));
+
+      const res = await apiPost('ajax/distribution_save.php', fd);
+      if (res.success) {
+        notify('success', res.message);
+        distributionModal.hide();
+        distributionsTable.ajax.reload(null, false);
       }
     });
-    if (items.length === 0) {
-      notify('error', 'Please add at least one relief item with a quantity.');
-      return;
-    }
-
-    const fd = new FormData(e.target);
-    fd.append('items', JSON.stringify(items));
-
-    const res = await apiPost('ajax/distribution_save.php', fd);
-    if (res.success) {
-      notify('success', res.message);
-      distributionModal.hide();
-      distributionsTable.ajax.reload(null, false);
-    }
-  });
+  }
 });
 
 function loadCentersDropdown() {
@@ -166,6 +178,12 @@ function openViewModal(id) {
         <div class="text-muted small mb-1">Relief Items Distributed</div>
         ${itemsHtml}
       `;
+
+      // Read-only monitoring accounts see the details but cannot change status.
+      if (!CAN_MANAGE_RELIEF) {
+        footer.innerHTML = '<button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>';
+        return;
+      }
 
       footer.innerHTML = `
         <select class="form-select form-select-sm w-auto" id="statusSelect">

@@ -5,7 +5,7 @@
 
 let userModal, resetPasswordModal, usersTable, USERS_CACHE = [];
 
-const ROLE_LABEL = { admin: 'Admin', department: 'Department User', logistics: 'Logistics / Relief', approver: 'Approver' };
+const ROLE_LABEL = { admin: 'Administrator', department: 'Department User', logistics: 'Logistics / Relief', approver: 'Approver' };
 const ROLE_BADGE = { admin: 'bg-primary', department: 'bg-info text-dark', logistics: 'bg-warning text-dark', approver: 'bg-success' };
 
 document.addEventListener('DOMContentLoaded', () => {

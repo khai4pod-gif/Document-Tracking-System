@@ -37,7 +37,7 @@ $__notifications = $__notifListStmt->fetchAll();
 <link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link href="assets/css/style.css" rel="stylesheet">
+<link href="<?= e(asset('assets/css/style.css')) ?>" rel="stylesheet">
 <style>
   .topbar-logo {
     height: 26px;
@@ -102,7 +102,7 @@ $__notifications = $__notifListStmt->fetchAll();
             <span class="avatar"><?= e(strtoupper(substr($__user['full_name'], 0, 1))) ?></span>
             <span class="d-none d-md-flex flex-column align-items-start lh-sm">
               <strong style="font-size:.85rem;"><?= e($__user['full_name']) ?></strong>
-              <small class="text-capitalize text-muted" style="font-size:.72rem;"><?= e($__user['role']) ?></small>
+              <small class="text-muted" style="font-size:.72rem;"><?= e(role_label($__user['role'])) ?></small>
             </span>
             <i class="bi bi-chevron-down small"></i>
           </button>

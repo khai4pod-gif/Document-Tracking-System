@@ -202,6 +202,34 @@ function badge_class_for_priority(string $priority): string
     };
 }
 
+/**
+ * Cache-busting URL for a local asset. Apache serves these static files
+ * without a Cache-Control header, so a browser can hold on to a stale
+ * copy after an edit; appending the file's mtime forces a fresh fetch
+ * whenever the file actually changes.
+ */
+function asset(string $path): string
+{
+    $full = __DIR__ . '/../' . ltrim($path, '/');
+    return $path . '?v=' . (is_file($full) ? filemtime($full) : time());
+}
+
+/**
+ * Human-readable label for a role. Purely presentational — the stored
+ * value (and every permission check) still uses the raw role key, so
+ * renaming a label here never affects access control.
+ */
+function role_label(string $role): string
+{
+    return match ($role) {
+        'admin'      => 'Administrator',
+        'department' => 'Department',
+        'logistics'  => 'Logistics',
+        'approver'   => 'Approver',
+        default      => ucfirst($role),
+    };
+}
+
 function badge_class_for_status(string $status): string
 {
     return match ($status) {

@@ -83,6 +83,6 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php
-$extraScripts = '<script src="assets/js/inventory.js"></script>';
+$extraScripts = '<script src="' . e(asset('assets/js/inventory.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

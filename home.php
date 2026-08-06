@@ -130,6 +130,6 @@ include __DIR__ . '/includes/header.php';
 
 <?php
 $extraScripts = '<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>';
-$extraScripts .= '<script src="assets/js/home.js"></script>';
+$extraScripts .= '<script src="' . e(asset('assets/js/home.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

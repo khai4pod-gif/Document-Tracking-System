@@ -93,9 +93,17 @@ class Document
             $params['search'] = '%' . $filters['search'] . '%';
         }
 
-        // Restrict non-admin/logistics users to documents tied to their department.
+        // Restrict non-admin/logistics users to documents tied to their
+        // department, plus the agency-wide shared types (see SHARED_DOC_TYPES).
         if (!empty($filters['scope'])) {
             $scope = $filters['scope'];
+            $sharedPlaceholders = [];
+            foreach (self::SHARED_DOC_TYPES as $i => $type) {
+                $sharedPlaceholders[]        = ':sharedType' . $i;
+                $params['sharedType' . $i]   = $type;
+            }
+            $sharedSql = ' OR d.doc_type IN (' . implode(', ', $sharedPlaceholders) . ')';
+
             if (!empty($scope['department_id'])) {
                 $where[] = '(d.origin_department_id = :scopeDept
                               OR holder.department_id = :scopeDeptHolder
@@ -103,13 +111,13 @@ class Document
                                   SELECT 1 FROM document_routes r
                                   WHERE r.document_id = d.id
                                     AND (r.from_department_id = :scopeDeptFrom OR r.to_department_id = :scopeDeptTo)
-                              ))';
+                              )' . $sharedSql . ')';
                 $params['scopeDept']       = $scope['department_id'];
                 $params['scopeDeptHolder'] = $scope['department_id'];
                 $params['scopeDeptFrom']   = $scope['department_id'];
                 $params['scopeDeptTo']     = $scope['department_id'];
             } else {
-                $where[] = '(d.created_by = :scopeUser OR d.current_holder_id = :scopeUserHolder)';
+                $where[] = '(d.created_by = :scopeUser OR d.current_holder_id = :scopeUserHolder' . $sharedSql . ')';
                 $params['scopeUser']       = $scope['user_id'];
                 $params['scopeUserHolder'] = $scope['user_id'];
             }
@@ -154,14 +162,28 @@ class Document
     }
 
     /**
+     * Document types that belong to agency-wide relief operations rather
+     * than to one office, so they stay readable across departments.
+     */
+    public const SHARED_DOC_TYPES = ['Relief Manifest'];
+
+    /**
      * Admins and logistics staff can access every document. 'department'
      * role users may only access documents that originated in their
      * department, are currently held by someone in their department, or
      * have passed through their department via routing.
+     *
+     * Relief Manifests are exempt: the distribution they belong to is
+     * already visible agency-wide (tracking number included), so every
+     * office can open and route the manifest that goes with it.
      */
     public function isAccessibleTo(array $doc, array $user): bool
     {
         if (in_array($user['role'], ['admin', 'logistics', 'approver'], true)) {
+            return true;
+        }
+
+        if (in_array($doc['doc_type'] ?? '', self::SHARED_DOC_TYPES, true)) {
             return true;
         }
 

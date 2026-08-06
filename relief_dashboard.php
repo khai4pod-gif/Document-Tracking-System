@@ -33,7 +33,11 @@ include __DIR__ . '/includes/header.php';
     <div class="section-sub">Operational analytics for relief packs, evacuation centers, and beneficiaries served.</div>
   </div>
   <div class="d-flex gap-2">
-    <a href="distributions.php" class="btn btn-primary"><i class="bi bi-truck me-1"></i> New Distribution</a>
+    <?php if (in_array(current_user()['role'], ['admin', 'logistics', 'approver'], true)): ?>
+      <a href="distributions.php" class="btn btn-primary"><i class="bi bi-truck me-1"></i> New Distribution</a>
+    <?php else: ?>
+      <a href="distributions.php" class="btn btn-primary"><i class="bi bi-truck me-1"></i> View Distributions</a>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -214,7 +218,7 @@ const TREND_DATA = ' . json_encode($trendData) . ';
 const CATEGORY_LABELS = ' . json_encode($catLabels) . ';
 const CATEGORY_DATA = ' . json_encode($catData) . ';
 </script>
-<script src="assets/js/relief_dashboard.js"></script>
+<script src="' . e(asset('assets/js/relief_dashboard.js')) . '"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const el = document.getElementById("categoryRankChart");
