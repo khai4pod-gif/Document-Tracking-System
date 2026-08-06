@@ -93,7 +93,10 @@ include __DIR__ . '/includes/header.php';
             </div>
             <div class="col-md-6" id="passwordWrapper">
               <label class="form-label">Password <span class="text-danger">*</span></label>
-              <input type="password" name="password" id="fieldPassword" class="form-control" minlength="8" placeholder="Minimum 8 characters">
+              <div class="input-group">
+                <input type="password" name="password" id="fieldPassword" class="form-control" minlength="8" placeholder="Minimum 8 characters">
+                <button class="btn btn-outline-secondary" type="button" id="toggleFieldPassword" tabindex="-1">👁</button>
+              </div>
             </div>
           </div>
         </div>

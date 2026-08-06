@@ -47,6 +47,11 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
   });
 
+  document.getElementById('toggleFieldPassword').addEventListener('click', () => {
+    const pwd = document.getElementById('fieldPassword');
+    pwd.type = pwd.type === 'password' ? 'text' : 'password';
+  });
+
   function toggleCanRouteWrapper() {
     const isDept = document.getElementById('fieldRole').value === 'department';
     document.getElementById('canRouteWrapper').style.display = isDept ? '' : 'none';
