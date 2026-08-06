@@ -102,4 +102,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (flashType && flashMessage) {
     notify(flashType, flashMessage);
   }
+
+  // Notification bell — mark all as read once the dropdown is opened.
+  const notifDropdown = document.getElementById('notifDropdown');
+  if (notifDropdown) {
+    notifDropdown.addEventListener('shown.bs.dropdown', () => {
+      const badge = document.getElementById('notifBadge');
+      if (!badge) return; // already all read
+      apiPost('ajax/notifications_read.php', {}).then((data) => {
+        if (data.success) {
+          badge.remove();
+          notifDropdown.querySelectorAll('.notif-item.unread').forEach((el) => el.classList.remove('unread'));
+        }
+      });
+    }, { once: true });
+  }
 });

@@ -74,11 +74,11 @@ $__notifications = $__notifListStmt->fetchAll();
 
       <div class="topbar-actions ms-auto">
         <!-- Notifications -->
-        <div class="dropdown">
+        <div class="dropdown" id="notifDropdown">
           <button class="btn-icon position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-bell"></i>
             <?php if ($__unreadCount > 0): ?>
-              <span class="notif-dot"><?= $__unreadCount > 9 ? '9+' : $__unreadCount ?></span>
+              <span class="notif-dot" id="notifBadge"><?= $__unreadCount > 9 ? '9+' : $__unreadCount ?></span>
             <?php endif; ?>
           </button>
           <div class="dropdown-menu dropdown-menu-end notif-menu p-0">
