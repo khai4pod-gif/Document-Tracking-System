@@ -98,6 +98,14 @@ include __DIR__ . '/includes/header.php';
                 <button class="btn btn-outline-secondary" type="button" id="toggleFieldPassword" tabindex="-1">👁</button>
               </div>
             </div>
+            <div class="col-md-6" id="confirmPasswordWrapper">
+              <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <input type="password" id="fieldConfirmPassword" class="form-control" minlength="8" placeholder="Re-enter password">
+                <button class="btn btn-outline-secondary" type="button" id="toggleFieldConfirmPassword" tabindex="-1">👁</button>
+              </div>
+              <div class="form-text text-danger" id="confirmPasswordError" style="display:none;">Passwords do not match.</div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">

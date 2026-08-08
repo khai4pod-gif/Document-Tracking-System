@@ -52,6 +52,11 @@ document.addEventListener('DOMContentLoaded', () => {
     pwd.type = pwd.type === 'password' ? 'text' : 'password';
   });
 
+  document.getElementById('toggleFieldConfirmPassword').addEventListener('click', () => {
+    const pwd = document.getElementById('fieldConfirmPassword');
+    pwd.type = pwd.type === 'password' ? 'text' : 'password';
+  });
+
   function toggleCanRouteWrapper() {
     const isDept = document.getElementById('fieldRole').value === 'department';
     document.getElementById('canRouteWrapper').style.display = isDept ? '' : 'none';
@@ -63,6 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('userId').value = '';
     document.getElementById('fieldPassword').required = true;
     document.getElementById('passwordWrapper').style.display = '';
+    document.getElementById('fieldConfirmPassword').required = true;
+    document.getElementById('confirmPasswordWrapper').style.display = '';
+    document.getElementById('confirmPasswordError').style.display = 'none';
     document.getElementById('fieldCanRoute').checked = true;
     toggleCanRouteWrapper();
     document.getElementById('userModalLabel').innerHTML = '<i class="bi bi-person-plus me-2"></i>New User';
@@ -85,12 +93,26 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleCanRouteWrapper();
     document.getElementById('fieldPassword').required = false;
     document.getElementById('passwordWrapper').style.display = 'none';
+    document.getElementById('fieldConfirmPassword').required = false;
+    document.getElementById('confirmPasswordWrapper').style.display = 'none';
+    document.getElementById('confirmPasswordError').style.display = 'none';
     document.getElementById('userModalLabel').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Edit User';
     userModal.show();
   });
 
   document.getElementById('userForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    const pwd = document.getElementById('fieldPassword');
+    const confirmPwd = document.getElementById('fieldConfirmPassword');
+    const confirmError = document.getElementById('confirmPasswordError');
+    if (document.getElementById('passwordWrapper').style.display !== 'none' && pwd.value !== confirmPwd.value) {
+      confirmError.style.display = '';
+      confirmPwd.focus();
+      return;
+    }
+    confirmError.style.display = 'none';
+
     const fd = new FormData(e.target);
     const res = await apiPost('ajax/user_save.php', fd);
     if (res.success) {
