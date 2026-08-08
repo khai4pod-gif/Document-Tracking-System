@@ -11,3 +11,7 @@ config/mail.local.php
 # OS / editor cruft
 Thumbs.db
 .DS_Store
+
+# PHPUnit / Composer
+/vendor/
+/.phpunit.cache/

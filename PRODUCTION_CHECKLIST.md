@@ -110,6 +110,30 @@ find relief-dts -name "*.php" -exec php -l {} \;
 
 ---
 
+## 4a. Running the Test Suite
+
+PHPUnit tests live in `tests/` and cover `classes/Document.php` and
+`classes/Relief.php` — the two files with real transactional logic
+(routing, approval gating, stock deduction). They run against a real
+MySQL database, not mocks, since that's what actually exercises
+transactions, foreign keys, and `FOR UPDATE` locking.
+
+```bash
+composer install
+mysql -u root -p -e "CREATE DATABASE dts_drds_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+grep -v -E '^(CREATE DATABASE|USE)' schema.sql | mysql -u root -p dts_drds_test
+vendor/bin/phpunit --testdox
+```
+
+Each test truncates and reseeds every table in `setUp()`, so tests never
+depend on execution order or on data left over from a previous run. Point
+`TEST_DB_HOST` / `TEST_DB_NAME` / `TEST_DB_USER` / `TEST_DB_PASS` env vars
+at a different database if `127.0.0.1` / `dts_drds_test` / `root` / *(blank)*
+isn't right for your machine — never run this against `dts_drds` itself,
+the suite truncates every table it touches.
+
+---
+
 ## 5. Known Gaps / Deliberately Out of Scope
 
 - **`download.php` access model** is "any authenticated user" rather than

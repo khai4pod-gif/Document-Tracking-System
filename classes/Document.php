@@ -462,7 +462,7 @@ class Document
                 FROM document_logs l
                 JOIN users u ON u.id = l.user_id
                 WHERE l.document_id = :doc
-                ORDER BY l.created_at ASC";
+                ORDER BY l.created_at ASC, l.id ASC";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['doc' => $documentId]);
         return $stmt->fetchAll();
