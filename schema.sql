@@ -54,6 +54,23 @@ CREATE TABLE `login_attempts` (
   INDEX `idx_login_attempts_lookup` (`username`, `ip_address`, `attempted_at`)
 ) ENGINE=InnoDB;
 
+-- Multi-factor authentication: one-time passcodes emailed at login.
+-- Only a hash of the code is stored, so a database leak cannot reveal a
+-- live passcode.
+CREATE TABLE `login_otps` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL,
+  `code_hash` VARCHAR(255) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL,
+  `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `expires_at` DATETIME NOT NULL,
+  `consumed_at` DATETIME DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_login_otps_user` FOREIGN KEY (`user_id`)
+      REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  INDEX `idx_login_otps_active` (`user_id`, `consumed_at`, `expires_at`)
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------
 -- 3. DOCUMENT TRACKING SYSTEM (DTS)
 -- ---------------------------------------------------------------------

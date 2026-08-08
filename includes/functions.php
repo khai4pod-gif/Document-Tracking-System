@@ -251,3 +251,51 @@ function badge_class_for_approval(string $approvalStatus): string
         default    => 'bg-secondary', // Not Required
     };
 }
+
+// ---------------------------------------------------------------------
+// LOGIN OTP DELIVERY
+// ---------------------------------------------------------------------
+
+/**
+ * Emails a login passcode to the user.
+ *
+ * @throws RuntimeException if the message could not be sent — the caller
+ *         is expected to fail the login rather than let it through.
+ */
+function send_login_otp(array $user, string $code): void
+{
+    $minutes = (int)round(OTP_TTL_SECONDS / 60);
+    $appName = APP_SHORT_NAME;
+
+    $text = "Hello {$user['full_name']},\r\n\r\n"
+        . "Your verification code is: {$code}\r\n\r\n"
+        . "It expires in {$minutes} minutes and can only be used once.\r\n\r\n"
+        . "If you did not try to sign in, someone may have your password — "
+        . "please change it as soon as you can.\r\n\r\n"
+        . "-- {$appName}";
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e;">'
+        . '<div style="background:#0b2e5e;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;">'
+        . '<div style="font-size:16px;font-weight:700;">' . e($appName) . '</div>'
+        . '<div style="font-size:12px;opacity:.8;">Sign-in verification</div>'
+        . '</div>'
+        . '<div style="border:1px solid #e3e3e8;border-top:0;border-radius:0 0 10px 10px;padding:24px;">'
+        . '<p style="margin:0 0 16px;">Hello <strong>' . e($user['full_name']) . '</strong>,</p>'
+        . '<p style="margin:0 0 12px;">Use this verification code to finish signing in:</p>'
+        . '<div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;'
+        . 'background:#f5f7fa;border:1px dashed #c8952b;border-radius:10px;padding:18px;margin:0 0 16px;">'
+        . e($code) . '</div>'
+        . '<p style="margin:0 0 12px;font-size:13px;color:#586173;">'
+        . 'The code expires in ' . $minutes . ' minutes and can only be used once.</p>'
+        . '<p style="margin:0;font-size:13px;color:#586173;">'
+        . 'If you did not try to sign in, someone may have your password — please change it as soon as you can.</p>'
+        . '</div></div>';
+
+    (new Mailer())->send(
+        (string)$user['email'],
+        (string)$user['full_name'],
+        'Your ' . $appName . ' verification code: ' . $code,
+        $html,
+        $text
+    );
+}

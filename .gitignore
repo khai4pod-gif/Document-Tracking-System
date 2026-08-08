@@ -4,6 +4,10 @@ uploads/manifests/*
 !uploads/documents/.gitkeep
 !uploads/manifests/.gitkeep
 
+# Machine-specific mail credentials — never publish SMTP passwords.
+# Copy config/mail.local.example.php to config/mail.local.php instead.
+config/mail.local.php
+
 # OS / editor cruft
 Thumbs.db
 .DS_Store

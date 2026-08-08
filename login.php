@@ -12,6 +12,11 @@ if (is_logged_in()) {
     redirect('dashboard.php');
 }
 
+// Landing here fresh abandons any half-finished OTP challenge.
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    unset($_SESSION['pending_2fa']);
+}
+
 $errors = [];
 $oldUsername = '';
 
@@ -44,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Too many failed attempts. Please try again in a few minutes.';
         } else {
             $stmt = $pdo->prepare(
-                "SELECT id, username, password_hash, full_name, role, department_id, is_active
+                "SELECT id, username, email, password_hash, full_name, role, department_id, is_active
                  FROM users WHERE username = :u LIMIT 1"
             );
             $stmt->execute(['u' => $username]);
@@ -56,24 +61,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
 
             if ($user && (int)$user['is_active'] === 1 && password_verify($password, $user['password_hash'])) {
-                // Successful login
+                // The password checks out, but this is only the first factor.
+                // No 'user' key is written to the session yet, so the account
+                // stays logged out until verify_otp.php confirms the emailed
+                // passcode.
                 $logStmt->execute(['u' => $username, 'ip' => $ip, 'success' => 1]);
 
                 session_regenerate_id(true); // prevent session fixation
-                $_SESSION['user'] = [
-                    'id'            => (int)$user['id'],
-                    'username'      => $user['username'],
-                    'full_name'     => $user['full_name'],
-                    'role'          => $user['role'],
-                    'department_id' => $user['department_id'] !== null ? (int)$user['department_id'] : null,
-                ];
-                $_SESSION['last_activity'] = time();
 
-                $pdo->prepare("UPDATE users SET last_login_at = NOW() WHERE id = :id")
-                    ->execute(['id' => $user['id']]);
+                $otp = new LoginOtp($pdo);
+                try {
+                    $code = $otp->issue((int)$user['id'], $ip);
+                    send_login_otp($user, $code);
 
-                flash_set('success', 'Welcome back, ' . $user['full_name'] . '!');
-                redirect('home.php');
+                    $_SESSION['pending_2fa'] = [
+                        'user_id'    => (int)$user['id'],
+                        'started_at' => time(),
+                    ];
+                    redirect('verify_otp.php');
+                } catch (Throwable $mailError) {
+                    // Fail closed: without a delivered code there is no second
+                    // factor, so the login does not proceed.
+                    error_log('[LOGIN OTP ERROR] ' . $mailError->getMessage());
+                    $otp->clearFor((int)$user['id']);
+                    unset($_SESSION['pending_2fa']);
+                    $errors[] = 'We could not send your verification code right now. Please try signing in again in a moment.';
+                }
             } else {
                 $logStmt->execute(['u' => $username, 'ip' => $ip, 'success' => 0]);
                 $errors[] = 'Invalid credentials. Please check your username and password.';

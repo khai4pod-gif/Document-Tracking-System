@@ -239,6 +239,22 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   KEY `idx_login_attempts_lookup` (`username`,`ip_address`,`attempted_at`)
 ) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Dumping structure for table dts_drds.login_otps
+DROP TABLE IF EXISTS `login_otps`;
+CREATE TABLE IF NOT EXISTS `login_otps` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `code_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `attempts` tinyint unsigned NOT NULL DEFAULT '0',
+  `expires_at` datetime NOT NULL,
+  `consumed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_login_otps_active` (`user_id`,`consumed_at`,`expires_at`),
+  CONSTRAINT `fk_login_otps_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Dumping data for table dts_drds.login_attempts: ~24 rows (approximately)
 INSERT INTO `login_attempts` (`id`, `username`, `ip_address`, `success`, `attempted_at`) VALUES
 	(1, 'admin', '::1', 0, '2026-07-24 12:24:33'),

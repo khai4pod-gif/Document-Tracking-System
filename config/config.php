@@ -57,6 +57,40 @@ define('ALLOWED_UPLOAD_MIMES', [
 define('SESSION_IDLE_TIMEOUT', 30 * 60);
 
 // ---------------------------------------------------------------------
+// Outgoing mail (used for login OTP delivery).
+//
+// Real SMTP credentials belong in config/mail.local.php, which is
+// gitignored and therefore never published. Copy mail.local.example.php
+// to mail.local.php and fill it in — see that file for a Gmail example.
+//
+// Whatever that file does not define falls back to the values below,
+// which target Mailpit (Laragon runs it on 127.0.0.1:1025). With those
+// defaults nothing leaves this machine; every message is readable at
+// http://localhost:8025.
+// ---------------------------------------------------------------------
+if (is_file(__DIR__ . '/mail.local.php')) {
+    require __DIR__ . '/mail.local.php';
+}
+
+defined('MAIL_HOST')         || define('MAIL_HOST', '127.0.0.1');
+defined('MAIL_PORT')         || define('MAIL_PORT', 1025);
+defined('MAIL_ENCRYPTION')   || define('MAIL_ENCRYPTION', '');  // '', 'tls' (STARTTLS), or 'ssl'
+defined('MAIL_USERNAME')     || define('MAIL_USERNAME', '');    // empty = no SMTP authentication
+defined('MAIL_PASSWORD')     || define('MAIL_PASSWORD', '');
+defined('MAIL_FROM_ADDRESS') || define('MAIL_FROM_ADDRESS', 'no-reply@relief-dts.local');
+defined('MAIL_FROM_NAME')    || define('MAIL_FROM_NAME', APP_SHORT_NAME);
+defined('MAIL_TIMEOUT')      || define('MAIL_TIMEOUT', 10);     // seconds
+
+// ---------------------------------------------------------------------
+// Login OTP (multi-factor authentication)
+// ---------------------------------------------------------------------
+define('OTP_LENGTH', 6);
+define('OTP_TTL_SECONDS', 10 * 60);  // code validity window
+define('OTP_MAX_ATTEMPTS', 5);       // wrong guesses before the code dies
+define('OTP_RESEND_COOLDOWN', 60);   // seconds between resend requests
+define('OTP_PENDING_TTL', 15 * 60);  // how long the half-authenticated state lives
+
+// ---------------------------------------------------------------------
 // Autoload core classes (simple manual autoloader — no Composer needed).
 // ---------------------------------------------------------------------
 spl_autoload_register(function (string $class) {

@@ -120,6 +120,9 @@ function nav_active(string $file, string $current): string
     <a href="departments.php" class="nav-link <?= nav_active('departments.php', $__current) ?>">
       <i class="bi bi-building"></i><span>Departments</span>
     </a>
+    <a href="mail_test.php" class="nav-link <?= nav_active('mail_test.php', $__current) ?>">
+      <i class="bi bi-envelope-check"></i><span>Mail Delivery Test</span>
+    </a>
     <?php endif; ?>
     <a href="documents.php?archived=1" class="nav-link">
       <i class="bi bi-archive"></i><span>Archived Documents</span>
