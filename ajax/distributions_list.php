@@ -19,7 +19,10 @@ $data = array_map(static function (array $r): array {
         'reference_no'        => $r['reference_no'],
         'center_name'         => $r['center_name'],
         'target_area'         => $r['target_area'],
-        'distribution_date'   => date('M d, Y', strtotime($r['distribution_date'])),
+        // Formatted for display, which sorts as text ("Jul" before "Aug");
+        // the _ts field carries the real ordering.
+        'distribution_date'    => date('M d, Y', strtotime($r['distribution_date'])),
+        'distribution_date_ts' => strtotime($r['distribution_date']),
         'total_beneficiaries' => (int)$r['total_beneficiaries'],
         'status'              => $r['status'],
         'distributed_by_name' => $r['distributed_by_name'],

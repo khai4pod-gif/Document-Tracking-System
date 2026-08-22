@@ -13,6 +13,9 @@ const APPROVAL_BADGE = {
   Pending: 'bg-warning text-dark', Approved: 'bg-success', Rejected: 'bg-danger',
 };
 
+// Index of the CREATED column in the table definition below.
+const CREATED_COL = 7;
+
 let documentModal, routeModal, documentsTable;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -24,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
       url: 'ajax/documents_list.php?archived=' + (SHOW_ARCHIVED ? '1' : '0'),
       dataSrc: 'data',
     },
-    order: [[7, 'desc']],
+    order: [[CREATED_COL, 'desc']],
     dom: "<'d-flex justify-content-between align-items-center mb-2'fB>rt<'d-flex justify-content-between align-items-center mt-2'ip>",
     buttons: ['csv', 'excel', 'print'],
     columns: [
@@ -42,7 +45,12 @@ document.addEventListener('DOMContentLoaded', () => {
           return `<span class="badge ${APPROVAL_BADGE[d] || 'bg-secondary'}">${escapeHtml(d)}</span>`;
         } },
       { data: 'holder_name', render: (d) => escapeHtml(d) },
-      { data: 'created_at', render: (d) => escapeHtml(d) },
+      {
+        // Display the friendly date, but sort on the raw timestamp — the
+        // formatted string orders alphabetically ("Jul" before "Aug").
+        data: 'created_at',
+        render: (d, t, row) => (t === 'sort' || t === 'type' ? row.created_at_ts : escapeHtml(d)),
+      },
       {
         data: null, orderable: false, className: 'text-end',
         render: (row) => {
@@ -128,12 +136,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Save (create/update)
   document.getElementById('documentForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const isNew = document.getElementById('documentId').value === '';
     const fd = new FormData(e.target);
     const res = await apiPost('ajax/document_save.php', fd);
     if (res.success) {
       notify('success', res.message);
       documentModal.hide();
-      documentsTable.ajax.reload(null, false);
+      if (isNew) {
+        // Put the new document where the user will see it: newest first,
+        // back on page one, even if they had sorted by another column.
+        documentsTable.order([CREATED_COL, 'desc']).ajax.reload(null, true);
+      } else {
+        documentsTable.ajax.reload(null, false);
+      }
     }
   });
 

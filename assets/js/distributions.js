@@ -26,7 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
     columns: [
       { data: 'reference_no', render: (d) => `<span class="tracking-chip">${escapeHtml(d)}</span>` },
       { data: null, render: (row) => `${escapeHtml(row.center_name)}<br><span class="text-muted small">${escapeHtml(row.target_area)}</span>` },
-      { data: 'distribution_date' },
+      {
+        // Display the friendly date, but sort on the raw timestamp — the
+        // formatted string orders alphabetically ("Jul" before "Aug").
+        data: 'distribution_date',
+        render: (d, t, row) => (t === 'sort' || t === 'type' ? row.distribution_date_ts : d),
+      },
       { data: 'total_beneficiaries', render: (d) => d.toLocaleString() },
       { data: 'status', render: (d) => `<span class="badge ${STATUS_BADGE_DIST[d] || 'bg-secondary'}">${escapeHtml(d)}</span>` },
       { data: 'tracking_number', render: (d) => d ? `<span class="tracking-chip">${escapeHtml(d)}</span>` : '<span class="text-muted small">Not generated</span>' },

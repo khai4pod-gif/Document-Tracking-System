@@ -27,7 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
       { data: null, render: (row) => row.role !== 'department'
           ? '<span class="text-muted small">—</span>'
           : (row.can_route ? '<span class="badge bg-success">Allowed</span>' : '<span class="badge bg-secondary">Restricted</span>') },
-      { data: 'last_login_at' },
+      {
+        // Display the friendly date, but sort on the raw timestamp — the
+        // formatted string orders alphabetically ("Jul" before "Aug").
+        data: 'last_login_at',
+        render: (d, t, row) => (t === 'sort' || t === 'type' ? row.last_login_at_ts : escapeHtml(d)),
+      },
       { data: 'is_active', render: (d) => d ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>' },
       {
         data: null, orderable: false, className: 'text-end',

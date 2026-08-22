@@ -38,7 +38,10 @@ $data = array_map(static function (array $r): array {
         'approval_status' => $r['approval_status'],
         'holder_name'     => $r['holder_name'] ?? '—',
         'creator_name'    => $r['creator_name'],
+        // created_at is pre-formatted for display, which sorts as text
+        // ("Jul" before "Aug"). created_at_ts carries the real ordering.
         'created_at'      => date('M d, Y g:i A', strtotime($r['created_at'])),
+        'created_at_ts'   => strtotime($r['created_at']),
         'due_date'        => $r['due_date'] ? date('M d, Y', strtotime($r['due_date'])) : null,
         'is_archived'     => (int)$r['is_archived'],
     ];
