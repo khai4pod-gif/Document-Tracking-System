@@ -178,6 +178,75 @@ function generate_reference_number(PDO $pdo): string
 }
 
 /** Records an immutable audit-trail entry for a document. */
+/**
+ * The routing actions offered in the "Action Required" dropdowns, as the
+ * "CODE - LABEL" strings that get written to document_routes.action_required.
+ *
+ * @return string[]
+ */
+function route_action_options(): array
+{
+    $options = [];
+    foreach (ROUTE_ACTIONS as $code => $label) {
+        $options[] = $code . ' - ' . $label;
+    }
+    return $options;
+}
+
+/**
+ * Whitelist check for a submitted action. The field is a fixed dropdown, so
+ * anything outside the list arrived by hand-crafted POST rather than the UI.
+ *
+ * Routes created before the dropdown existed hold free text; this is only
+ * applied to new submissions, never to stored history.
+ */
+function is_valid_route_action(string $action): bool
+{
+    return in_array($action, route_action_options(), true);
+}
+
+/**
+ * Splits a stored action into its code and label so the printed routing slip
+ * can set the code apart from the wording.
+ *
+ * Routes created before the dropdown existed hold arbitrary free text with no
+ * code; those come back with an empty code and the original text as the label.
+ *
+ * @return array{code: string, label: string}
+ */
+function route_action_parts(string $action): array
+{
+    $bits = explode(' - ', $action, 2);
+    if (count($bits) === 2 && isset(ROUTE_ACTIONS[$bits[0]])) {
+        return ['code' => $bits[0], 'label' => $bits[1]];
+    }
+    return ['code' => '', 'label' => $action];
+}
+
+/**
+ * Validates a user-supplied cloud link, returning the trimmed URL or null if
+ * it is blank, over-long, or not a usable web address.
+ *
+ * The scheme check is the part that matters: these URLs are rendered straight
+ * into an href on the document view, so without it a `javascript:` value
+ * stored here would become a working XSS payload for anyone who clicks it.
+ */
+function sanitize_cloud_link(string $url): ?string
+{
+    $url = trim($url);
+    if ($url === '' || mb_strlen($url) > MAX_CLOUD_LINK_LENGTH) {
+        return null;
+    }
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        return null;
+    }
+    $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+    if (!in_array($scheme, ['http', 'https'], true)) {
+        return null;
+    }
+    return $url;
+}
+
 function log_document_action(PDO $pdo, int $documentId, int $userId, string $action, ?string $details = null): void
 {
     $stmt = $pdo->prepare(

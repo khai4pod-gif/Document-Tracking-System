@@ -531,4 +531,80 @@ class Document
         }
         return $ok;
     }
+
+    // -----------------------------------------------------------------
+    // Cloud links — pointers to files hosted elsewhere (Drive, OneDrive,
+    // SharePoint) instead of copies uploaded into uploads/documents/.
+    // -----------------------------------------------------------------
+
+    /**
+     * Links reuse the 'Attachment Added' / 'Attachment Removed' log actions
+     * rather than adding values to the document_logs enum, so the audit
+     * trail stays complete without a migration on an existing table. The
+     * "Cloud link:" prefix in details is what tells the two apart.
+     *
+     * Expects a URL already vetted by sanitize_cloud_link().
+     */
+    public function addLink(int $documentId, string $url, int $userId): int
+    {
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO document_links (document_id, url, added_by, added_at)
+             VALUES (:doc, :url, :user, NOW())"
+        );
+        $stmt->execute(['doc' => $documentId, 'url' => $url, 'user' => $userId]);
+        $id = (int)$this->pdo->lastInsertId();
+
+        // document_logs.details is VARCHAR(500) and a URL may be far longer.
+        log_document_action(
+            $this->pdo, $documentId, $userId,
+            'Attachment Added', mb_substr('Cloud link: ' . $url, 0, 500)
+        );
+        return $id;
+    }
+
+    public function getLinks(int $documentId): array
+    {
+        $sql = "SELECT l.*, u.full_name AS added_by_name
+                FROM document_links l
+                JOIN users u ON u.id = l.added_by
+                WHERE l.document_id = :doc
+                ORDER BY l.added_at DESC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['doc' => $documentId]);
+        return $stmt->fetchAll();
+    }
+
+    public function countLinks(int $documentId): int
+    {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM document_links WHERE document_id = :doc");
+        $stmt->execute(['doc' => $documentId]);
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function findLink(int $linkId): ?array
+    {
+        $stmt = $this->pdo->prepare("SELECT * FROM document_links WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $linkId]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public function deleteLink(int $linkId, int $userId): bool
+    {
+        $link = $this->findLink($linkId);
+        if (!$link) {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare("DELETE FROM document_links WHERE id = :id");
+        $ok = $stmt->execute(['id' => $linkId]);
+
+        if ($ok) {
+            log_document_action(
+                $this->pdo, (int)$link['document_id'], $userId,
+                'Attachment Removed', mb_substr('Cloud link: ' . $link['url'], 0, 500)
+            );
+        }
+        return $ok;
+    }
 }

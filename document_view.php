@@ -47,6 +47,7 @@ if (($_GET['format'] ?? '') === 'json') {
 }
 
 $attachments = $documentModel->getAttachments($id);
+$links = $documentModel->getLinks($id);
 $routes = $documentModel->getRoutes($id);
 $logs = $documentModel->getLogs($id);
 $currentUserId = (int)current_user()['id'];
@@ -122,6 +123,7 @@ include __DIR__ . '/includes/header.php';
       <?php else: ?>
         <button class="btn btn-outline-success btn-sm" id="btnMarkComplete"><i class="bi bi-check-circle me-1"></i> Mark Completed</button>
       <?php endif; ?>
+      <button class="btn btn-outline-secondary btn-sm" id="btnAddLink"><i class="bi bi-link-45deg me-1"></i> Add Link</button>
       <button class="btn btn-outline-secondary btn-sm" id="btnUploadAttachment"><i class="bi bi-paperclip me-1"></i> Add Attachment</button>
     <?php endif; ?>
     <button class="btn btn-outline-dark btn-sm" id="btnPrintSlip" onclick="window.print()"><i class="bi bi-printer me-1"></i> Print</button>
@@ -166,7 +168,7 @@ include __DIR__ . '/includes/header.php';
     <thead>
       <tr>
         <th colspan="3">From</th>
-        <th>Notes / Remarks</th>
+        <th>Action / Notes</th>
         <th colspan="3">To</th>
       </tr>
       <tr>
@@ -187,6 +189,15 @@ include __DIR__ . '/includes/header.php';
             <td><?= date('d M y', strtotime($r['routed_at'])) ?></td>
             <td><?= date('g:i A', strtotime($r['routed_at'])) ?></td>
             <td>
+              <?php if ($r['action_required']): ?>
+                <?php $slipAction = route_action_parts((string)$r['action_required']); ?>
+                <div class="print-slip__action">
+                  <?php if ($slipAction['code'] !== ''): ?>
+                    <span class="print-slip__action-code"><?= e($slipAction['code']) ?></span>
+                  <?php endif; ?>
+                  <?= e($slipAction['label']) ?>
+                </div>
+              <?php endif; ?>
               <?php if ($r['status'] === 'Pending'): ?>
                 <span class="print-slip__status">Pending Acceptance</span>
               <?php elseif ($r['status'] === 'Returned'): ?>
@@ -265,6 +276,14 @@ include __DIR__ . '/includes/header.php';
     text-transform: uppercase; font-size: 9.5px; letter-spacing: .03em; text-align: center; background: #f2f3f7;
   }
   .print-slip__routing tbody td { height: 30px; }
+  .print-slip__action {
+    font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em;
+    line-height: 1.25; margin-bottom: 3px;
+  }
+  .print-slip__action-code {
+    display: inline-block; font-weight: 700; font-size: 9px;
+    border: 1px solid #333; border-radius: 2px; padding: 0 3px; margin-right: 3px;
+  }
   .print-slip__status {
     display: inline-block; font-size: 8.5px; font-weight: 700; text-transform: uppercase;
     background: #fdecc8; color: #8a5b00; padding: 1px 6px; border-radius: 3px;
@@ -298,13 +317,41 @@ include __DIR__ . '/includes/header.php';
 
     <div class="card-panel mb-3">
       <div class="card-panel-header d-flex justify-content-between">
-        <span>Attachments</span>
-        <span class="badge bg-secondary"><?= count($attachments) ?></span>
+        <span>Attachments &amp; Links</span>
+        <span class="badge bg-secondary"><?= count($attachments) + count($links) ?></span>
       </div>
       <div class="p-3">
-        <?php if (empty($attachments)): ?>
-          <div class="text-muted text-center py-3">No attachments uploaded yet.</div>
-        <?php else: ?>
+        <?php if (empty($attachments) && empty($links)): ?>
+          <div class="text-muted text-center py-3">No attachments or links added yet.</div>
+        <?php endif; ?>
+
+        <?php if (!empty($links)): ?>
+          <ul class="list-group list-group-flush mb-2" id="linkList">
+            <?php foreach ($links as $l): ?>
+              <?php $host = parse_url($l['url'], PHP_URL_HOST) ?: $l['url']; ?>
+              <li class="list-group-item d-flex justify-content-between align-items-center px-0" data-link-id="<?= (int)$l['id'] ?>">
+                <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                  <i class="bi bi-link-45deg fs-5 text-primary"></i>
+                  <div style="min-width:0;">
+                    <div class="fw-semibold small text-truncate" title="<?= e($l['url']) ?>"><?= e($host) ?></div>
+                    <div class="text-muted text-truncate" style="font-size:.72rem;" title="<?= e($l['url']) ?>">
+                      Added by <?= e($l['added_by_name']) ?> on <?= date('M d, Y', strtotime($l['added_at'])) ?>
+                    </div>
+                  </div>
+                </div>
+                <div class="d-flex gap-2 flex-shrink-0">
+                  <a href="<?= e($l['url']) ?>" target="_blank" rel="noopener noreferrer"
+                     class="btn btn-sm btn-outline-primary" title="Open link"><i class="bi bi-box-arrow-up-right"></i></a>
+                  <?php if ((int)$doc['is_archived'] === 0): ?>
+                  <button class="btn btn-sm btn-outline-danger btn-delete-link" data-id="<?= (int)$l['id'] ?>"><i class="bi bi-trash"></i></button>
+                  <?php endif; ?>
+                </div>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        <?php endif; ?>
+
+        <?php if (!empty($attachments)): ?>
           <ul class="list-group list-group-flush" id="attachmentList">
             <?php foreach ($attachments as $a): ?>
               <li class="list-group-item d-flex justify-content-between align-items-center px-0" data-attachment-id="<?= (int)$a['id'] ?>">
@@ -396,7 +443,12 @@ include __DIR__ . '/includes/header.php';
           </div>
           <div class="mb-3">
             <label class="form-label">Action Required <span class="text-danger">*</span></label>
-            <input type="text" name="action_required" class="form-control" required maxlength="255" placeholder="e.g. Review and approve">
+            <select name="action_required" class="form-select" required>
+              <option value="">Select action required…</option>
+              <?php foreach (route_action_options() as $__action): ?>
+                <option value="<?= e($__action) ?>"><?= e($__action) ?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
           <div class="mb-1">
             <label class="form-label">Remarks</label>
@@ -406,6 +458,34 @@ include __DIR__ . '/includes/header.php';
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i> Route Document</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Cloud Link Modal -->
+<div class="modal fade" id="linkModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="linkForm">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-link-45deg me-2"></i>Add Cloud Link</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="document_id" value="<?= (int)$doc['id'] ?>">
+          <label class="form-label">Link <span class="text-danger">*</span></label>
+          <input type="url" name="url" id="fieldLinkUrl" class="form-control"
+                 placeholder="https://drive.google.com/..." maxlength="<?= MAX_CLOUD_LINK_LENGTH ?>" required>
+          <div class="form-text">
+            Paste a share link from Google Drive, OneDrive, SharePoint, or any other web address.
+            Make sure the recipients have permission to open it.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i> Add Link</button>
         </div>
       </form>
     </div>

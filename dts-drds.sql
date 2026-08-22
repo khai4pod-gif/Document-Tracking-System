@@ -151,6 +151,23 @@ CREATE TABLE IF NOT EXISTS `document_attachments` (
 
 -- Dumping data for table dts_drds.document_attachments: ~0 rows (approximately)
 
+-- Dumping structure for table dts_drds.document_links
+DROP TABLE IF EXISTS `document_links`;
+CREATE TABLE IF NOT EXISTS `document_links` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `document_id` int unsigned NOT NULL,
+  `url` varchar(2048) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `added_by` int unsigned NOT NULL,
+  `added_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_links_document` (`document_id`),
+  KEY `fk_link_added_by` (`added_by`),
+  CONSTRAINT `fk_link_document` FOREIGN KEY (`document_id`) REFERENCES `documents` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_link_added_by` FOREIGN KEY (`added_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Dumping data for table dts_drds.document_links: ~0 rows (approximately)
+
 -- Dumping structure for table dts_drds.document_logs
 DROP TABLE IF EXISTS `document_logs`;
 CREATE TABLE IF NOT EXISTS `document_logs` (

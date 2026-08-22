@@ -90,6 +90,12 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('documentId').value = '';
       document.getElementById('documentModalLabel').innerHTML = '<i class="bi bi-file-earmark-plus me-2"></i>New Document';
       document.getElementById('attachmentWrapper').style.display = '';
+      // Routing is offered on create only; existing documents use the Route action.
+      const routeWrapper = document.getElementById('routeOnCreateWrapper');
+      if (routeWrapper) {
+        routeWrapper.style.display = '';
+        loadUsersDropdown('fieldRouteTo', 'Do not route yet — save as draft');
+      }
       documentModal.show();
     });
   }
@@ -111,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('fieldDueDate').value = d.due_date_raw || '';
         document.getElementById('fieldDescription').value = d.description || '';
         document.getElementById('attachmentWrapper').style.display = 'none';
+        const routeWrapper = document.getElementById('routeOnCreateWrapper');
+        if (routeWrapper) routeWrapper.style.display = 'none';
         document.getElementById('documentModalLabel').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Edit Document';
         documentModal.show();
       })
@@ -134,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     document.getElementById('routeForm').reset();
     document.getElementById('routeDocumentId').value = $(this).data('id');
-    loadUsersDropdown();
+    loadUsersDropdown('routeToUser', 'Select recipient…');
     routeModal.show();
   });
 
@@ -178,13 +186,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function loadUsersDropdown() {
-  const select = document.getElementById('routeToUser');
+/**
+ * Fills a <select> with the active registered users returned by
+ * ajax/users_list.php. Shared by the Route modal and the "Route" block
+ * inside the New Document modal, hence the configurable placeholder.
+ */
+function loadUsersDropdown(selectId, placeholder) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
   select.innerHTML = '<option value="">Loading users…</option>';
   fetch('ajax/users_list.php')
     .then((r) => r.json())
     .then((res) => {
-      select.innerHTML = '<option value="">Select recipient…</option>';
+      select.innerHTML = '';
+      const blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = placeholder;
+      select.appendChild(blank);
       (res.data || []).forEach((u) => {
         const opt = document.createElement('option');
         opt.value = u.id;

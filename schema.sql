@@ -122,6 +122,23 @@ CREATE TABLE `document_attachments` (
       REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
+-- Cloud links: an alternative to uploading a file. Stores a pointer to a
+-- document hosted elsewhere (Google Drive, OneDrive, SharePoint, ...) so
+-- large files and living documents don't have to be copied into uploads/.
+-- Only http/https URLs are accepted; enforced in PHP, not by the schema.
+CREATE TABLE `document_links` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `document_id` INT UNSIGNED NOT NULL,
+  `url` VARCHAR(2048) NOT NULL,
+  `added_by` INT UNSIGNED NOT NULL,
+  `added_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_links_document` (`document_id`),
+  CONSTRAINT `fk_link_document` FOREIGN KEY (`document_id`)
+      REFERENCES `documents`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_link_added_by` FOREIGN KEY (`added_by`)
+      REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
 -- Routing / workflow (office-to-office, user-to-user transfer)
 CREATE TABLE `document_routes` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

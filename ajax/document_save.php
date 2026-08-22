@@ -77,6 +77,42 @@ try {
     $result = $documentModel->create($data, (int)$user['id']);
     $newId = $result['id'];
 
+    // Anything that went wrong *after* the document itself was created. The
+    // document still exists, so these are reported as warnings on a successful
+    // response rather than as a failure.
+    $notes = [];
+
+    // Optional cloud links from the "Cloud Link" rows on the create form.
+    // Blank rows are expected (the form always seeds one) and are skipped
+    // silently; only genuinely malformed entries are reported back.
+    $submittedLinks = $_POST['cloud_links'] ?? [];
+    if (is_array($submittedLinks)) {
+        $savedLinks = 0;
+        $rejectedLinks = 0;
+
+        foreach ($submittedLinks as $rawLink) {
+            if (!is_string($rawLink) || trim($rawLink) === '') {
+                continue;
+            }
+            if ($savedLinks >= MAX_CLOUD_LINKS) {
+                $rejectedLinks++;
+                continue;
+            }
+            $link = sanitize_cloud_link($rawLink);
+            if ($link === null) {
+                $rejectedLinks++;
+                continue;
+            }
+            $documentModel->addLink($newId, $link, (int)$user['id']);
+            $savedLinks++;
+        }
+
+        if ($rejectedLinks > 0) {
+            $notes[] = $rejectedLinks . ' cloud link(s) were skipped — only http/https addresses are accepted, up to '
+                . MAX_CLOUD_LINKS . ' per document';
+        }
+    }
+
     // Optional initial attachment
     if (!empty($_FILES['attachment']['name'])) {
         try {
@@ -84,18 +120,72 @@ try {
             $fileMeta = $uploader->upload($_FILES['attachment']);
             $documentModel->addAttachment($newId, $fileMeta, (int)$user['id']);
         } catch (RuntimeException $e) {
-            // Document was created successfully; report the attachment issue separately.
-            json_response([
-                'success' => true,
-                'message' => 'Document created (tracking #' . $result['tracking_number'] . '), but the attachment failed: ' . $e->getMessage(),
-                'id' => $newId,
-            ]);
+            $notes[] = 'the attachment failed (' . $e->getMessage() . ')';
         }
+    }
+
+    // Optional immediate routing, driven by the "Route" block on the create form.
+    $routedTo = null;
+    $routeToUserId = (int)($_POST['route_to_user_id'] ?? 0);
+
+    if ($routeToUserId > 0) {
+        // Leaving the action dropdown alone falls back to the neutral default
+        // rather than silently dropping the recipient choice; a value that
+        // isn't on the list did not come from the form.
+        $actionRequired = trim((string)($_POST['route_action_required'] ?? ''));
+        if ($actionRequired === '') {
+            $actionRequired = DEFAULT_ROUTE_ACTION;
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT full_name, department_id FROM users WHERE id = :id AND is_active = 1 LIMIT 1"
+        );
+        $stmt->execute(['id' => $routeToUserId]);
+        $recipient = $stmt->fetch();
+
+        // Each guard explains itself; routing only happens once all of them pass.
+        $skipReason = match (true) {
+            !user_can_route($user, $pdo)
+                => 'your account does not have permission to route documents',
+            $routeToUserId === (int)$user['id']
+                => 'a document cannot be routed to yourself',
+            !$recipient
+                => 'the selected recipient no longer exists or is inactive',
+            !is_valid_route_action($actionRequired)
+                => 'the action required was not one of the listed options',
+            default => null,
+        };
+
+        if ($skipReason !== null) {
+            $notes[] = 'routing was skipped because ' . $skipReason;
+        } else {
+            $routed = $documentModel->route($newId, [
+                'to_user_id'         => $routeToUserId,
+                'from_department_id' => $user['department_id'],
+                'to_department_id'   => $recipient['department_id'],
+                'action_required'    => $actionRequired,
+                'remarks'            => mb_substr(trim((string)($_POST['route_remarks'] ?? '')), 0, 1000),
+            ], (int)$user['id']);
+
+            if ($routed) {
+                $routedTo = $recipient['full_name'];
+            } else {
+                $notes[] = 'the document could not be routed — use the Route action to send it';
+            }
+        }
+    }
+
+    $message = 'Document created — tracking number ' . $result['tracking_number'];
+    if ($routedTo !== null) {
+        $message .= ', routed to ' . $routedTo;
+    }
+    if (!empty($notes)) {
+        $message .= '. Note: ' . implode('; ', $notes);
     }
 
     json_response([
         'success' => true,
-        'message' => 'Document created — tracking number ' . $result['tracking_number'],
+        'message' => $message,
         'id' => $newId,
     ]);
 } catch (Throwable $e) {

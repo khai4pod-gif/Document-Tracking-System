@@ -119,6 +119,39 @@ include __DIR__ . '/includes/header.php';
               <label class="form-label">Description</label>
               <textarea name="description" id="fieldDescription" class="form-control" rows="3" maxlength="2000"></textarea>
             </div>
+<?php if ($canRoute): ?>
+            <div class="col-12" id="routeOnCreateWrapper">
+              <label class="form-label mb-2">Route <span class="text-muted small">(Optional)</span></label>
+              <div class="route-card">
+                <div class="route-card__sub">
+                  <i class="bi bi-signpost-split me-1"></i>
+                  Send this document to a recipient as soon as it is saved. Leave the recipient blank to keep it as a draft you can route later.
+                </div>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label small text-muted mb-1">Route To</label>
+                    <select name="route_to_user_id" id="fieldRouteTo" class="form-select">
+                      <option value="">Do not route yet — save as draft</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small text-muted mb-1">Action Required</label>
+                    <select name="route_action_required" id="fieldRouteAction" class="form-select">
+                      <option value="">Select action…</option>
+                      <?php foreach (route_action_options() as $__action): ?>
+                        <option value="<?= e($__action) ?>"><?= e($__action) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small text-muted mb-1">Remarks</label>
+                    <textarea name="route_remarks" id="fieldRouteRemarks" class="form-control" rows="2"
+                              maxlength="1000" placeholder="Optional notes for the recipient"></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+<?php endif; ?>
             <div class="col-12" id="attachmentWrapper">
               <label class="form-label mb-2">Attachments <span class="text-muted small">(Optional)</span></label>
 
@@ -177,7 +210,12 @@ include __DIR__ . '/includes/header.php';
           </div>
           <div class="mb-3">
             <label class="form-label">Action Required <span class="text-danger">*</span></label>
-            <input type="text" name="action_required" class="form-control" placeholder="e.g. Review and approve" required maxlength="255">
+            <select name="action_required" class="form-select" required>
+              <option value="">Select action required…</option>
+              <?php foreach (route_action_options() as $__action): ?>
+                <option value="<?= e($__action) ?>"><?= e($__action) ?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
           <div class="mb-1">
             <label class="form-label">Remarks</label>
@@ -194,6 +232,13 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <style>
+.route-card {
+  background: #f7f9fc;
+  border: 1px solid #e3e9f2;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+}
+.route-card__sub { font-size: 0.85rem; color: #5b6472; margin-bottom: 0.9rem; }
 .cloud-link-card {
   background: #eef4ff;
   border: 1px solid #dbe6fd;
@@ -235,7 +280,9 @@ include __DIR__ . '/includes/header.php';
 
 <script>
 (function () {
-  const MAX_LINKS = 20;
+  // Kept in step with the server-side caps enforced in document_save.php.
+  const MAX_LINKS = <?= (int)MAX_CLOUD_LINKS ?>;
+  const MAX_LINK_LENGTH = <?= (int)MAX_CLOUD_LINK_LENGTH ?>;
   const rowsEl = document.getElementById('cloudLinkRows');
   const addBtn = document.getElementById('btnAddCloudLink');
   const countEl = document.getElementById('cloudLinkCount');
@@ -251,7 +298,7 @@ include __DIR__ . '/includes/header.php';
     const row = document.createElement('div');
     row.className = 'cloud-link-row';
     row.innerHTML = `
-      <input type="url" name="cloud_links[]" placeholder="https://drive.google.com/...">
+      <input type="url" name="cloud_links[]" maxlength="${MAX_LINK_LENGTH}" placeholder="https://drive.google.com/...">
       <button type="button" class="cloud-link-row__remove" aria-label="Remove link"><i class="bi bi-x-lg"></i></button>
     `;
     row.querySelector('.cloud-link-row__remove').addEventListener('click', function () {

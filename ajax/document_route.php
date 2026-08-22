@@ -19,7 +19,10 @@ $actionRequired = trim((string)($_POST['action_required'] ?? ''));
 $remarks       = trim((string)($_POST['remarks'] ?? ''));
 
 if ($documentId <= 0 || $toUserId <= 0 || $actionRequired === '') {
-    json_response(['success' => false, 'message' => 'Please select a recipient and describe the action required.'], 422);
+    json_response(['success' => false, 'message' => 'Please select a recipient and the action required.'], 422);
+}
+if (!is_valid_route_action($actionRequired)) {
+    json_response(['success' => false, 'message' => 'Please choose an action required from the list.'], 422);
 }
 
 $pdo = Database::getConnection();

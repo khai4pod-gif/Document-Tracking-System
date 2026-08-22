@@ -47,6 +47,21 @@ define('BASE_URL', '/');                       // relief-dts.test's DocumentRoot
 define('UPLOAD_DIR', __DIR__ . '/../uploads/documents/');
 define('MANIFEST_UPLOAD_DIR', __DIR__ . '/../uploads/manifests/');
 define('MAX_UPLOAD_BYTES', 10 * 1024 * 1024);  // 10 MB
+define('MAX_CLOUD_LINKS', 20);                 // per document; mirrored by the UI counter
+define('MAX_CLOUD_LINK_LENGTH', 2048);         // matches document_links.url
+
+// The fixed set of routing actions offered when a document is sent onward.
+// Stored in document_routes.action_required as "CODE - LABEL"; see
+// route_action_options() / is_valid_route_action() in includes/functions.php.
+define('ROUTE_ACTIONS', [
+    'FYI'  => 'FOR YOUR INFORMATION',
+    'FYR'  => 'FOR YOUR REFERENCE',
+    'MEMO' => 'MEMORANDUM',
+    'RA'   => 'REQUEST FOR APPROVAL',
+    'RD'   => 'REQUEST FOR DOCUMENTS',
+    'RP'   => 'REQUEST FOR PAYMENT',
+]);
+define('DEFAULT_ROUTE_ACTION', 'FYI - FOR YOUR INFORMATION');
 define('ALLOWED_UPLOAD_MIMES', [
     'application/pdf'                                                          => 'pdf',
     'application/msword'                                                       => 'doc',
