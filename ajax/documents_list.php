@@ -38,6 +38,7 @@ $data = array_map(static function (array $r): array {
         'approval_status' => $r['approval_status'],
         'holder_name'     => $r['holder_name'] ?? '—',
         'creator_name'    => $r['creator_name'],
+        'created_by'      => (int)$r['created_by'],
         // created_at is pre-formatted for display, which sorts as text
         // ("Jul" before "Aug"). created_at_ts carries the real ordering.
         'created_at'      => date('M d, Y g:i A', strtotime($r['created_at'])),

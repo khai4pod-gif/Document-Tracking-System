@@ -61,7 +61,11 @@ document.addEventListener('DOMContentLoaded', () => {
           let actions = `<div class="dropdown"><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button><ul class="dropdown-menu dropdown-menu-end">`;
           actions += `<li><a class="dropdown-item" href="document_view.php?id=${row.id}"><i class="bi bi-eye me-2"></i>View</a></li>`;
           if (!archived) {
-            actions += `<li><a class="dropdown-item action-edit" href="#" data-id="${row.id}"><i class="bi bi-pencil me-2"></i>Edit</a></li>`;
+            if (row.created_by === CURRENT_USER_ID) {
+              actions += `<li><a class="dropdown-item action-edit" href="#" data-id="${row.id}"><i class="bi bi-pencil me-2"></i>Edit</a></li>`;
+            } else {
+              actions += `<li><span class="dropdown-item disabled" title="Only the document's creator can edit it."><i class="bi bi-pencil me-2"></i>Edit</span></li>`;
+            }
             actions += `<li><hr class="dropdown-divider"></li>`;
             actions += `<li><a class="dropdown-item text-danger action-archive" href="#" data-id="${row.id}"><i class="bi bi-archive me-2"></i>Archive</a></li>`;
           } else {

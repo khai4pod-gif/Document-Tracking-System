@@ -66,6 +66,9 @@ try {
         if (!$documentModel->isAccessibleTo($existing, $user)) {
             json_response(['success' => false, 'message' => 'Access denied: this document belongs to another department.'], 403);
         }
+        if ((int)$existing['created_by'] !== (int)$user['id']) {
+            json_response(['success' => false, 'message' => 'Only the document\'s creator can edit it.'], 403);
+        }
         $ok = $documentModel->update($documentId, $data, (int)$user['id']);
         if (!$ok) {
             json_response(['success' => false, 'message' => 'Unable to update the document.'], 500);

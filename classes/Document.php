@@ -126,7 +126,7 @@ class Document
         $whereSql = 'WHERE ' . implode(' AND ', $where);
 
         $sql = "SELECT d.id, d.tracking_number, d.title, d.doc_type, d.priority, d.status,
-                       d.due_date, d.created_at, d.is_archived, d.approval_status,
+                       d.due_date, d.created_at, d.is_archived, d.approval_status, d.created_by,
                        creator.full_name AS creator_name,
                        holder.full_name AS holder_name
                 FROM documents d

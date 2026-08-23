@@ -285,10 +285,12 @@ $extraScripts = <<<'HTML'
 <script>
 const SHOW_ARCHIVED = ARCHIVED_FLAG;
 const CAN_ROUTE = CAN_ROUTE_FLAG;
+const CURRENT_USER_ID = CURRENT_USER_ID_FLAG;
 </script>
 HTML;
 $extraScripts = str_replace('ARCHIVED_FLAG', $showArchived ? 'true' : 'false', $extraScripts);
 $extraScripts = str_replace('CAN_ROUTE_FLAG', $canRoute ? 'true' : 'false', $extraScripts);
+$extraScripts = str_replace('CURRENT_USER_ID_FLAG', (string)(int)current_user()['id'], $extraScripts);
 $extraScripts .= '<script src="' . e(asset('assets/js/documents.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>
