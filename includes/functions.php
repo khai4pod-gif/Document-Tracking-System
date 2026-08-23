@@ -129,11 +129,6 @@ function require_role(array $roles): void
 }
 
 /**
- * Only Department accounts are ever gated by the can_route flag; every
- * other role can always route. Queried fresh (not from the session) so
- * an admin revoking access takes effect on the user's very next request.
- */
-/**
  * Whether this user's dashboard shows agency-wide figures, or only the
  * documents they created themselves.
  *
@@ -158,6 +153,11 @@ function user_sees_all_documents(array $user, PDO $pdo): bool
     return $code !== false && in_array((string)$code, OVERSIGHT_DEPARTMENT_CODES, true);
 }
 
+/**
+ * Only Department accounts are ever gated by the can_route flag; every
+ * other role can always route. Queried fresh (not from the session) so
+ * an admin revoking access takes effect on the user's very next request.
+ */
 function user_can_route(array $user, PDO $pdo): bool
 {
     if ($user['role'] !== 'department') {
@@ -178,16 +178,59 @@ function redirect(string $path): void
 // MISC HELPERS
 // ---------------------------------------------------------------------
 
-/** Generates a unique, human-readable document tracking number, e.g. DOC-2026-000123 */
-function generate_tracking_number(PDO $pdo): string
+/**
+ * The tracking-number prefix for a department: its code, reduced to the
+ * characters that are safe inside an identifier.
+ *
+ * departments.code is editable from the admin UI, so it cannot be assumed
+ * clean — a code like "PR/S 1" would otherwise produce an unparseable
+ * tracking number. Anything left empty after stripping falls back to DOC.
+ */
+function tracking_prefix_for_department(PDO $pdo, ?int $departmentId): string
 {
-    $year = date('Y');
+    if ($departmentId === null || $departmentId <= 0) {
+        return 'DOC';
+    }
+
+    $stmt = $pdo->prepare("SELECT code FROM departments WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $departmentId]);
+    $code = (string)$stmt->fetchColumn();
+
+    $clean = preg_replace('/[^A-Z0-9]/', '', strtoupper($code));
+    if ($clean === '') {
+        return 'DOC';
+    }
+
+    // The whole number must fit tracking_number's VARCHAR(30), and
+    // "-YYYY-NNNNNN" already costs 12 characters.
+    return substr($clean, 0, 18);
+}
+
+/**
+ * Generates a unique, human-readable document tracking number.
+ *
+ * The prefix is the creating department's code, so an office's documents are
+ * recognisable at a glance: DMS-2026-000001, PRS-2026-000014. Documents with
+ * no originating department — relief manifests, unassigned accounts — fall
+ * back to DOC. Each prefix carries its own sequence within the year.
+ */
+function generate_tracking_number(PDO $pdo, ?int $departmentId = null): string
+{
+    $year   = date('Y');
+    $prefix = tracking_prefix_for_department($pdo, $departmentId);
+
+    // MAX of the numeric suffix rather than COUNT: if a row is ever deleted,
+    // COUNT would hand out a number that has already been issued and collide
+    // with the UNIQUE index on tracking_number.
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*) AS cnt FROM documents WHERE tracking_number LIKE :prefix"
+        "SELECT MAX(CAST(SUBSTRING_INDEX(tracking_number, '-', -1) AS UNSIGNED))
+         FROM documents
+         WHERE tracking_number LIKE :prefix"
     );
-    $stmt->execute(['prefix' => "DOC-{$year}-%"]);
-    $count = (int)$stmt->fetch()['cnt'] + 1;
-    return sprintf('DOC-%s-%06d', $year, $count);
+    $stmt->execute(['prefix' => "{$prefix}-{$year}-%"]);
+    $next = (int)$stmt->fetchColumn() + 1;
+
+    return sprintf('%s-%s-%06d', $prefix, $year, $next);
 }
 
 /** Generates a unique reference number for relief distributions, e.g. REL-2026-000045 */

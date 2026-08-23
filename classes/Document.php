@@ -269,7 +269,10 @@ class Document
      */
     public function create(array $data, int $userId): array
     {
-        $trackingNumber = generate_tracking_number($this->pdo);
+        // The tracking prefix comes from the originating office, so each
+        // department's documents are identifiable from the number alone.
+        $originDeptId = !empty($data['origin_department_id']) ? (int)$data['origin_department_id'] : null;
+        $trackingNumber = generate_tracking_number($this->pdo, $originDeptId);
         $approvalStatus = ($data['creator_role'] ?? '') === 'department' ? 'Pending' : 'Not Required';
 
         $sql = "INSERT INTO documents
