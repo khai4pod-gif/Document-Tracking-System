@@ -62,6 +62,14 @@ define('ROUTE_ACTIONS', [
     'RP'   => 'REQUEST FOR PAYMENT',
 ]);
 define('DEFAULT_ROUTE_ACTION', 'FYI - FOR INFORMATION/REFERENCE');
+
+// Departments whose staff keep agency-wide dashboard figures. Every other
+// office sees only the documents its own account created.
+// Matched on departments.code — see user_sees_all_documents().
+define('OVERSIGHT_DEPARTMENT_CODES', [
+    'ADMIN',  // Office of the Administrator
+    'MAIN',   // Office of the Secretary
+]);
 define('ALLOWED_UPLOAD_MIMES', [
     'application/pdf'                                                          => 'pdf',
     'application/msword'                                                       => 'doc',

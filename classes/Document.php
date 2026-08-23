@@ -20,7 +20,11 @@ class Document
     // DASHBOARD / KPI QUERIES
     // -------------------------------------------------------------
 
-    public function getStats(): array
+    /**
+     * KPI figures for the dashboard. Passing $creatorId narrows every count
+     * to documents that user created; null counts agency-wide.
+     */
+    public function getStats(?int $creatorId = null): array
     {
         $sql = "SELECT
                     COUNT(*) AS total,
@@ -30,7 +34,16 @@ class Document
                               AND status NOT IN ('Completed') THEN 1 ELSE 0 END) AS overdue
                 FROM documents
                 WHERE is_archived = 0";
-        $row = $this->pdo->query($sql)->fetch();
+
+        $params = [];
+        if ($creatorId !== null) {
+            $sql .= " AND created_by = :creator";
+            $params['creator'] = $creatorId;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch();
 
         return [
             'total'           => (int)($row['total'] ?? 0),
@@ -40,29 +53,46 @@ class Document
         ];
     }
 
-    public function getRecent(int $limit = 8): array
+    /** $creatorId narrows the list to that user's own documents; null lists all. */
+    public function getRecent(int $limit = 8, ?int $creatorId = null): array
     {
         $sql = "SELECT d.*, u.full_name AS holder_name
                 FROM documents d
                 LEFT JOIN users u ON u.id = d.current_holder_id
-                WHERE d.is_archived = 0
-                ORDER BY d.created_at DESC
-                LIMIT :lim";
+                WHERE d.is_archived = 0";
+        if ($creatorId !== null) {
+            $sql .= " AND d.created_by = :creator";
+        }
+        $sql .= " ORDER BY d.created_at DESC LIMIT :lim";
+
         $stmt = $this->pdo->prepare($sql);
+        if ($creatorId !== null) {
+            $stmt->bindValue(':creator', $creatorId, PDO::PARAM_INT);
+        }
         $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
 
-    public function getRecentActivity(int $limit = 10): array
+    /**
+     * $creatorId limits the feed to activity on that user's own documents,
+     * so the timeline never names a document they cannot open.
+     */
+    public function getRecentActivity(int $limit = 10, ?int $creatorId = null): array
     {
         $sql = "SELECT l.*, u.full_name AS actor_name, d.tracking_number, d.title
                 FROM document_logs l
                 JOIN users u ON u.id = l.user_id
-                JOIN documents d ON d.id = l.document_id
-                ORDER BY l.created_at DESC
-                LIMIT :lim";
+                JOIN documents d ON d.id = l.document_id";
+        if ($creatorId !== null) {
+            $sql .= " WHERE d.created_by = :creator";
+        }
+        $sql .= " ORDER BY l.created_at DESC LIMIT :lim";
+
         $stmt = $this->pdo->prepare($sql);
+        if ($creatorId !== null) {
+            $stmt->bindValue(':creator', $creatorId, PDO::PARAM_INT);
+        }
         $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
@@ -291,12 +321,28 @@ class Document
         return $ok;
     }
 
-    public function archive(int $id, int $userId): bool
+    /**
+     * Archiving is how a document is closed out, so it records why. The
+     * conclusion remarks are kept on the document (for the detail view) and
+     * repeated in the audit log (for the timeline).
+     */
+    public function archive(int $id, int $userId, string $conclusionRemarks): bool
     {
-        $stmt = $this->pdo->prepare("UPDATE documents SET is_archived = 1, updated_at = NOW() WHERE id = :id");
-        $ok = $stmt->execute(['id' => $id]);
+        $remarks = mb_substr(trim($conclusionRemarks), 0, 500);
+
+        $stmt = $this->pdo->prepare(
+            "UPDATE documents
+                SET is_archived = 1, conclusion_remarks = :remarks, updated_at = NOW()
+              WHERE id = :id"
+        );
+        $ok = $stmt->execute(['remarks' => $remarks, 'id' => $id]);
+
         if ($ok) {
-            log_document_action($this->pdo, $id, $userId, 'Archived', 'Document archived (soft delete).');
+            // document_logs.details is VARCHAR(500) and the prefix eats into it.
+            log_document_action(
+                $this->pdo, $id, $userId, 'Archived',
+                mb_substr('Archived — ' . $remarks, 0, 500)
+            );
         }
         return $ok;
     }

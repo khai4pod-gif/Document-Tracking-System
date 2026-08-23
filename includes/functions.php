@@ -133,6 +133,31 @@ function require_role(array $roles): void
  * other role can always route. Queried fresh (not from the session) so
  * an admin revoking access takes effect on the user's very next request.
  */
+/**
+ * Whether this user's dashboard shows agency-wide figures, or only the
+ * documents they created themselves.
+ *
+ * The Office of the Administrator and the Office of the Secretary oversee
+ * every other office, so their staff keep the full picture. Role 'admin' is
+ * included as well so a system administrator assigned to some other office
+ * still keeps the overview.
+ */
+function user_sees_all_documents(array $user, PDO $pdo): bool
+{
+    if (($user['role'] ?? '') === 'admin') {
+        return true;
+    }
+    if (empty($user['department_id'])) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare("SELECT code FROM departments WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $user['department_id']]);
+    $code = $stmt->fetchColumn();
+
+    return $code !== false && in_array((string)$code, OVERSIGHT_DEPARTMENT_CODES, true);
+}
+
 function user_can_route(array $user, PDO $pdo): bool
 {
     if ($user['role'] !== 'department') {

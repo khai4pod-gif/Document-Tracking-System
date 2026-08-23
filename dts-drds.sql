@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS `documents` (
   `approved_by` int unsigned DEFAULT NULL,
   `approved_at` datetime DEFAULT NULL,
   `is_archived` tinyint(1) NOT NULL DEFAULT '0',
+  `conclusion_remarks` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

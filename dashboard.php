@@ -11,9 +11,14 @@ require_login();
 $pdo = Database::getConnection();
 $documentModel = new Document($pdo);
 
-$stats  = $documentModel->getStats();
-$recent = $documentModel->getRecent(8);
-$activity = $documentModel->getRecentActivity(10);
+// Oversight offices (Administrator / Secretary) see agency-wide figures;
+// every other account sees only the documents it created.
+$seesAll = user_sees_all_documents(current_user(), $pdo);
+$scopeCreatorId = $seesAll ? null : (int)current_user()['id'];
+
+$stats  = $documentModel->getStats($scopeCreatorId);
+$recent = $documentModel->getRecent(8, $scopeCreatorId);
+$activity = $documentModel->getRecentActivity(10, $scopeCreatorId);
 
 $pageTitle = 'Dashboard';
 $pageIcon  = 'bi-speedometer2';
@@ -23,7 +28,11 @@ include __DIR__ . '/includes/header.php';
 <div class="d-flex flex-wrap align-items-end justify-content-between mb-4 gap-2">
   <div>
     <div class="section-heading">Welcome back, <?= e(explode(' ', $__user['full_name'])[0]) ?> 👋</div>
-    <div class="section-sub">Here's what's happening across document tracking today.</div>
+    <div class="section-sub">
+      <?= $seesAll
+            ? "Here's what's happening across document tracking today."
+            : "Here's what's happening with the documents you created." ?>
+    </div>
   </div>
   <a href="documents.php" class="btn btn-primary">
     <i class="bi bi-plus-lg me-1"></i> New Document
@@ -37,7 +46,7 @@ include __DIR__ . '/includes/header.php';
       <div class="kpi-icon" style="background:#e9eef6;color:var(--accent);"><i class="bi bi-files"></i></div>
       <div>
         <div class="kpi-value"><?= number_format($stats['total']) ?></div>
-        <div class="kpi-label">Total Documents</div>
+        <div class="kpi-label"><?= $seesAll ? 'Total Documents' : 'My Documents' ?></div>
       </div>
     </div>
   </div>
@@ -75,7 +84,7 @@ include __DIR__ . '/includes/header.php';
   <div class="col-lg-7">
     <div class="card-panel h-100">
       <div class="card-panel-header d-flex justify-content-between align-items-center">
-        <span>Recent Documents</span>
+        <span><?= $seesAll ? 'Recent Documents' : 'My Recent Documents' ?></span>
         <a href="documents.php" class="small text-decoration-none">View all <i class="bi bi-arrow-right"></i></a>
       </div>
       <div class="table-responsive">

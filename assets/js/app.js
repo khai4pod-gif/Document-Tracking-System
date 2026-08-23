@@ -72,6 +72,62 @@ function confirmAction(title, text, confirmText = 'Yes, proceed') {
   }).then((r) => r.isConfirmed);
 }
 
+/**
+ * Confirmation dialog that also collects a required free-text reason.
+ * Resolves to the trimmed text, or null if the user cancelled — so callers
+ * check `=== null` rather than truthiness (an empty string never gets past
+ * the validator anyway).
+ */
+async function confirmWithRemarks({
+  title,
+  text = '',
+  confirmText = 'Yes, proceed',
+  label,
+  placeholder = '',
+  help = '',
+  maxLength = 500,
+}) {
+  const res = await Swal.fire({
+    title,
+    icon: 'warning',
+    html: `
+      ${text ? `<div class="swal-remarks__intro">${escapeHtml(text)}</div>` : ''}
+      <div class="swal-remarks">
+        <label class="swal-remarks__label" for="swalRemarks">
+          ${escapeHtml(label)} <span class="swal-remarks__req">*</span>
+        </label>
+        <textarea id="swalRemarks" class="swal-remarks__input" rows="3"
+                  maxlength="${maxLength}" placeholder="${escapeHtml(placeholder)}"></textarea>
+        <div class="swal-remarks__foot">
+          <span class="swal-remarks__help">${escapeHtml(help)}</span>
+          <span class="swal-remarks__count"><span id="swalRemarksCount">0</span>/${maxLength}</span>
+        </div>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonColor: '#2f80ed',
+    cancelButtonColor: '#8a93a3',
+    confirmButtonText: confirmText,
+    focusConfirm: false,
+    didOpen: () => {
+      const ta = document.getElementById('swalRemarks');
+      const counter = document.getElementById('swalRemarksCount');
+      ta.addEventListener('input', () => { counter.textContent = ta.value.length; });
+      ta.focus();
+    },
+    preConfirm: () => {
+      const value = document.getElementById('swalRemarks').value.trim();
+      if (!value) {
+        Swal.showValidationMessage('Please enter the conclusion remarks.');
+        return false;
+      }
+      return value;
+    },
+  });
+
+  return res.isConfirmed ? res.value : null;
+}
+
 /* ---------------- Sidebar toggle ---------------- */
 document.addEventListener('DOMContentLoaded', () => {
   const body = document.body;

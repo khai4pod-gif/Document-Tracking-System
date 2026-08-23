@@ -161,9 +161,19 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#documentsTable').on('click', '.action-archive', async function (e) {
     e.preventDefault();
     const id = $(this).data('id');
-    const confirmed = await confirmAction('Archive this document?', 'It will be moved out of the active list. You can restore it later.', 'Yes, archive');
-    if (!confirmed) return;
-    const res = await apiPost('ajax/document_archive.php', { document_id: id, action: 'archive' });
+    const remarks = await confirmWithRemarks({
+      title: 'Archive this document?',
+      text: 'It will be moved out of the active list. You can restore it later.',
+      confirmText: 'Yes, archive',
+      label: 'Conclusion remarks',
+      placeholder: 'e.g. transmitted to PIO for posting; awaiting external endorsement',
+      help: "Required · what your office did and why you're closing",
+      maxLength: 500,
+    });
+    if (remarks === null) return;
+    const res = await apiPost('ajax/document_archive.php', {
+      document_id: id, action: 'archive', conclusion_remarks: remarks,
+    });
     if (res.success) { notify('success', res.message); documentsTable.ajax.reload(null, false); }
   });
 

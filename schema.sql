@@ -90,6 +90,8 @@ CREATE TABLE `documents` (
   `approved_by` INT UNSIGNED DEFAULT NULL,
   `approved_at` DATETIME DEFAULT NULL,
   `is_archived` TINYINT(1) NOT NULL DEFAULT 0,
+  -- Why the document was closed out; captured when it is archived.
+  `conclusion_remarks` VARCHAR(500) DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `fk_documents_origin_dept` FOREIGN KEY (`origin_department_id`)

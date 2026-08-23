@@ -197,3 +197,25 @@ body{
 .scanner-error-text{color:#ff8a80;font-size:.9rem;font-weight:600;max-width:320px;}
 .scanner-frame.scanning #scannerViewport{position:relative;}
 .scanner-frame.scanning .scanner-overlay{display:none !important;}
+/* ---------- Confirm dialog with required remarks (confirmWithRemarks) ---------- */
+.swal-remarks__intro{
+  color:#5b6472;font-size:.95rem;line-height:1.45;margin-bottom:1.1rem;
+}
+.swal-remarks{text-align:left;}
+.swal-remarks__label{
+  display:block;font-weight:600;font-size:.9rem;color:var(--navy-800);margin-bottom:.4rem;
+}
+.swal-remarks__req{color:#dc3545;}
+.swal-remarks__input{
+  width:100%;border:1px solid #d5dbe4;border-radius:8px;padding:.6rem .75rem;
+  font-size:.92rem;font-family:inherit;line-height:1.45;resize:vertical;color:var(--navy-800);
+}
+.swal-remarks__input::placeholder{color:#9aa4b2;}
+.swal-remarks__input:focus{
+  outline:none;border-color:#2f80ed;box-shadow:0 0 0 3px rgba(47,128,237,.15);
+}
+.swal-remarks__foot{
+  display:flex;justify-content:space-between;align-items:center;gap:.75rem;
+  margin-top:.35rem;font-size:.78rem;color:#7b8593;
+}
+.swal-remarks__count{white-space:nowrap;}

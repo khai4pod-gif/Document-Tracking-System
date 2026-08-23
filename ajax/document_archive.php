@@ -16,9 +16,27 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $documentId = (int)($_POST['document_id'] ?? 0);
 $action     = (string)($_POST['action'] ?? '');
+$conclusionRemarks = trim((string)($_POST['conclusion_remarks'] ?? ''));
 
 if ($documentId <= 0 || !in_array($action, ['archive', 'restore', 'complete'], true)) {
     json_response(['success' => false, 'message' => 'Invalid request parameters.'], 422);
+}
+
+// Archiving closes a document out, so the reason is mandatory. The dialog
+// enforces this too; this is the check that actually counts.
+if ($action === 'archive') {
+    if ($conclusionRemarks === '') {
+        json_response([
+            'success' => false,
+            'message' => 'Conclusion remarks are required — say what your office did and why you are closing this document.',
+        ], 422);
+    }
+    if (mb_strlen($conclusionRemarks) > 500) {
+        json_response([
+            'success' => false,
+            'message' => 'Conclusion remarks must be 500 characters or fewer.',
+        ], 422);
+    }
 }
 
 $pdo = Database::getConnection();
@@ -43,7 +61,7 @@ if ($action === 'complete' && in_array($existing['approval_status'], ['Pending',
 }
 
 $ok = match ($action) {
-    'archive'  => $documentModel->archive($documentId, $userId),
+    'archive'  => $documentModel->archive($documentId, $userId, $conclusionRemarks),
     'restore'  => $documentModel->restore($documentId, $userId),
     'complete' => $documentModel->markCompleted($documentId, $userId),
 };

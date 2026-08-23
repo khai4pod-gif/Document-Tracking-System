@@ -311,6 +311,14 @@ include __DIR__ . '/includes/header.php';
             <div class="text-muted small">Description</div>
             <div><?= $doc['description'] ? nl2br(e($doc['description'])) : '<span class="text-muted">No description provided.</span>' ?></div>
           </div>
+          <?php if ((int)$doc['is_archived'] === 1 && !empty($doc['conclusion_remarks'])): ?>
+          <div class="col-12">
+            <div class="text-muted small">Conclusion Remarks</div>
+            <div class="alert alert-secondary py-2 px-3 mb-0 mt-1">
+              <i class="bi bi-archive me-1"></i><?= nl2br(e($doc['conclusion_remarks'])) ?>
+            </div>
+          </div>
+          <?php endif; ?>
         </div>
       </div>
     </div>

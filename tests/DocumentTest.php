@@ -94,8 +94,10 @@ final class DocumentTest extends TestCase
     {
         $result = $this->doc->create($this->baseDocData(), $this->admin);
 
-        $this->assertTrue($this->doc->archive($result['id'], $this->admin));
-        $this->assertSame(1, (int)$this->doc->find($result['id'])['is_archived']);
+        $this->assertTrue($this->doc->archive($result['id'], $this->admin, 'Closed out — filed with Records.'));
+        $archived = $this->doc->find($result['id']);
+        $this->assertSame(1, (int)$archived['is_archived']);
+        $this->assertSame('Closed out — filed with Records.', $archived['conclusion_remarks']);
 
         $this->assertTrue($this->doc->restore($result['id'], $this->admin));
         $this->assertSame(0, (int)$this->doc->find($result['id'])['is_archived']);

@@ -15,7 +15,10 @@ $greeting = $hour < 12 ? 'Good morning' : ($hour < 18 ? 'Good afternoon' : 'Good
 
 $pdo = Database::getConnection();
 $documentModel = new Document($pdo);
-$stats = $documentModel->getStats();
+// Same scoping rule as the dashboard: oversight offices see agency-wide
+// figures, everyone else sees only the documents they created.
+$seesAll = user_sees_all_documents(current_user(), $pdo);
+$stats = $documentModel->getStats($seesAll ? null : (int)current_user()['id']);
 
 $pageTitle = 'Home';
 $pageIcon  = 'bi-house-door';
@@ -31,7 +34,7 @@ include __DIR__ . '/includes/header.php';
   <div class="col-sm-4">
     <div class="kpi-card">
       <div class="kpi-icon" style="background:#e8f0fe;color:var(--accent);"><i class="bi bi-files"></i></div>
-      <div><div class="kpi-value"><?= number_format($stats['total']) ?></div><div class="kpi-label">Total Documents</div></div>
+      <div><div class="kpi-value"><?= number_format($stats['total']) ?></div><div class="kpi-label"><?= $seesAll ? 'Total Documents' : 'My Documents' ?></div></div>
     </div>
   </div>
   <div class="col-sm-4">
