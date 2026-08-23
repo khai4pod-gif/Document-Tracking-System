@@ -135,13 +135,19 @@ class Document
             $sharedSql = ' OR d.doc_type IN (' . implode(', ', $sharedPlaceholders) . ')';
 
             if (!empty($scope['department_id'])) {
-                $where[] = '(d.origin_department_id = :scopeDept
+                // The first two terms mirror isAccessibleTo(): a user always
+                // sees what they created or hold, even after moving office.
+                $where[] = '(d.created_by = :scopeOwnUser
+                              OR d.current_holder_id = :scopeOwnHolder
+                              OR d.origin_department_id = :scopeDept
                               OR holder.department_id = :scopeDeptHolder
                               OR EXISTS (
                                   SELECT 1 FROM document_routes r
                                   WHERE r.document_id = d.id
                                     AND (r.from_department_id = :scopeDeptFrom OR r.to_department_id = :scopeDeptTo)
                               )' . $sharedSql . ')';
+                $params['scopeOwnUser']    = $scope['user_id'];
+                $params['scopeOwnHolder']  = $scope['user_id'];
                 $params['scopeDept']       = $scope['department_id'];
                 $params['scopeDeptHolder'] = $scope['department_id'];
                 $params['scopeDeptFrom']   = $scope['department_id'];
@@ -198,10 +204,10 @@ class Document
     public const SHARED_DOC_TYPES = ['Relief Manifest'];
 
     /**
-     * Admins and logistics staff can access every document. 'department'
-     * role users may only access documents that originated in their
-     * department, are currently held by someone in their department, or
-     * have passed through their department via routing.
+     * Admins and logistics staff can access every document. Everyone else
+     * can access what they created or currently hold, plus documents that
+     * originated in their department, are held by someone in their
+     * department, or have passed through it via routing.
      *
      * Relief Manifests are exempt: the distribution they belong to is
      * already visible agency-wide (tracking number included), so every
@@ -217,11 +223,18 @@ class Document
             return true;
         }
 
-        $deptId = $user['department_id'] ?? null;
+        // Checked before the department rules, and regardless of which
+        // department the user is in now: moving someone to another office
+        // must not hide the documents they created in the old one. The
+        // dashboard counts a user's own documents on exactly this basis.
+        if ((int)($doc['created_by'] ?? 0) === (int)$user['id']
+            || (int)($doc['current_holder_id'] ?? 0) === (int)$user['id']) {
+            return true;
+        }
 
+        $deptId = $user['department_id'] ?? null;
         if ($deptId === null) {
-            return (int)($doc['created_by'] ?? 0) === (int)$user['id']
-                || (int)($doc['current_holder_id'] ?? 0) === (int)$user['id'];
+            return false;
         }
 
         if ((int)($doc['origin_department_id'] ?? 0) === (int)$deptId) {
