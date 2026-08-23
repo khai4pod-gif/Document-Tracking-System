@@ -191,46 +191,6 @@ include __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<!-- ===================== Route Document Modal ===================== -->
-<div class="modal fade" id="routeModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <form id="routeForm">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Route Document</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" name="document_id" id="routeDocumentId">
-          <div class="mb-3">
-            <label class="form-label">Route To <span class="text-danger">*</span></label>
-            <select name="to_user_id" id="routeToUser" class="form-select" required>
-              <option value="">Loading users…</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Action Required <span class="text-danger">*</span></label>
-            <select name="action_required" class="form-select" required>
-              <option value="">Select action required…</option>
-              <?php foreach (route_action_options() as $__action): ?>
-                <option value="<?= e($__action) ?>"><?= e($__action) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="mb-1">
-            <label class="form-label">Remarks</label>
-            <textarea name="remarks" class="form-control" rows="3" placeholder="Optional notes for the recipient"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i> Route Document</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
 <style>
 .route-card {
   background: #f7f9fc;

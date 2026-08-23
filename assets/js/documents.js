@@ -1,7 +1,7 @@
 /**
  * assets/js/documents.js
  * Powers documents.php: DataTable rendering, filters, and the
- * Create/Edit/Route modals, all driven through the AJAX endpoints.
+ * Create/Edit modal, all driven through the AJAX endpoints.
  */
 
 const PRIORITY_BADGE = { Urgent: 'bg-danger', High: 'bg-warning text-dark', Normal: 'bg-info text-dark', Low: 'bg-secondary' };
@@ -16,11 +16,10 @@ const APPROVAL_BADGE = {
 // Index of the CREATED column in the table definition below.
 const CREATED_COL = 7;
 
-let documentModal, routeModal, documentsTable;
+let documentModal, documentsTable;
 
 document.addEventListener('DOMContentLoaded', () => {
   documentModal = new bootstrap.Modal(document.getElementById('documentModal'));
-  routeModal = new bootstrap.Modal(document.getElementById('routeModal'));
 
   documentsTable = $('#documentsTable').DataTable({
     ajax: {
@@ -30,6 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
     order: [[CREATED_COL, 'desc']],
     dom: "<'d-flex justify-content-between align-items-center mb-2'fB>rt<'d-flex justify-content-between align-items-center mt-2'ip>",
     buttons: ['csv', 'excel', 'print'],
+    createdRow: (row, data) => {
+      row.dataset.id = data.id;
+      row.style.cursor = 'pointer';
+    },
     columns: [
       { data: 'tracking_number', render: (d, t, row) => t === 'display'
           ? `<a href="document_view.php?id=${row.id}" class="tracking-chip text-decoration-none">${escapeHtml(d)}</a>` : d },
@@ -58,18 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
           let actions = `<div class="dropdown"><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button><ul class="dropdown-menu dropdown-menu-end">`;
           actions += `<li><a class="dropdown-item" href="document_view.php?id=${row.id}"><i class="bi bi-eye me-2"></i>View</a></li>`;
           if (!archived) {
-            const awaitingApproval = row.approval_status === 'Pending' || row.approval_status === 'Rejected';
             actions += `<li><a class="dropdown-item action-edit" href="#" data-id="${row.id}"><i class="bi bi-pencil me-2"></i>Edit</a></li>`;
-            if (!CAN_ROUTE) {
-              actions += `<li><span class="dropdown-item disabled" title="Your account does not have permission to route documents."><i class="bi bi-signpost-split me-2"></i>Route</span></li>`;
-            } else {
-              actions += `<li><a class="dropdown-item action-route" href="#" data-id="${row.id}"><i class="bi bi-signpost-split me-2"></i>Route</a></li>`;
-            }
-            if (awaitingApproval) {
-              actions += `<li><span class="dropdown-item disabled" title="This document must be approved before it can be marked completed."><i class="bi bi-check-circle me-2"></i>Mark Completed</span></li>`;
-            } else {
-              actions += `<li><a class="dropdown-item action-complete" href="#" data-id="${row.id}"><i class="bi bi-check-circle me-2"></i>Mark Completed</a></li>`;
-            }
             actions += `<li><hr class="dropdown-divider"></li>`;
             actions += `<li><a class="dropdown-item text-danger action-archive" href="#" data-id="${row.id}"><i class="bi bi-archive me-2"></i>Archive</a></li>`;
           } else {
@@ -80,6 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
         },
       },
     ],
+  });
+
+  // Clicking anywhere in a row opens the document — except the tracking-
+  // number link and the Actions dropdown, which already handle their own
+  // clicks (and shouldn't also trigger a navigation underneath them).
+  $('#documentsTable tbody').on('click', 'tr', function (e) {
+    if ($(e.target).closest('a, .dropdown').length) return;
+    const id = this.dataset.id;
+    if (id) window.location.href = 'document_view.php?id=' + id;
   });
 
   // Filters
@@ -150,36 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
         documentsTable.ajax.reload(null, false);
       }
     }
-  });
-
-  // Route action
-  $('#documentsTable').on('click', '.action-route', function (e) {
-    e.preventDefault();
-    document.getElementById('routeForm').reset();
-    document.getElementById('routeDocumentId').value = $(this).data('id');
-    loadUsersDropdown('routeToUser', 'Select recipient…');
-    routeModal.show();
-  });
-
-  document.getElementById('routeForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const res = await apiPost('ajax/document_route.php', fd);
-    if (res.success) {
-      notify('success', res.message);
-      routeModal.hide();
-      documentsTable.ajax.reload(null, false);
-    }
-  });
-
-  // Mark completed
-  $('#documentsTable').on('click', '.action-complete', async function (e) {
-    e.preventDefault();
-    const id = $(this).data('id');
-    const confirmed = await confirmAction('Mark as Completed?', 'This document will be flagged as completed.', 'Yes, mark completed');
-    if (!confirmed) return;
-    const res = await apiPost('ajax/document_archive.php', { document_id: id, action: 'complete' });
-    if (res.success) { notify('success', res.message); documentsTable.ajax.reload(null, false); }
   });
 
   // Archive
