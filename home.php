@@ -18,7 +18,18 @@ $documentModel = new Document($pdo);
 // Same scoping rule as the dashboard: oversight offices see agency-wide
 // figures, everyone else sees only the documents they created.
 $seesAll = user_sees_all_documents(current_user(), $pdo);
-$stats = $documentModel->getStats($seesAll ? null : (int)current_user()['id']);
+$scopeCreatorId = $seesAll ? null : (int)current_user()['id'];
+$stats = $documentModel->getStats($scopeCreatorId);
+$statusBreakdown = $documentModel->getStatusBreakdown($scopeCreatorId);
+$statusTotal = array_sum($statusBreakdown);
+$statusColors = [
+    'Draft'            => '#8a93a3',
+    'Pending Routing'  => '#f2994a',
+    'In Transit'       => '#2f80ed',
+    'Received'         => '#5b5fc7',
+    'Completed'        => '#1e9e6b',
+    'Overdue'          => '#e0473f',
+];
 
 $pageTitle = 'Home';
 $pageIcon  = 'bi-house-door';
@@ -71,6 +82,15 @@ include __DIR__ . '/includes/header.php';
           #scannerFrame.scanner-frame:has(#scannerOverlayIdle:not(.d-none)) {
             border: 1px solid #7ec8e3;
           }
+
+          /* Legend swatch for the status report list */
+          .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+          }
         </style>
 
         <div id="scannerFrame" class="scanner-frame">
@@ -106,13 +126,35 @@ include __DIR__ . '/includes/header.php';
     </div>
   </div>
 
-  <div class="col-lg-5">
-    <div class="card-panel h-100">
+  <div class="col-lg-5 d-flex flex-column gap-3">
+    <div class="card-panel">
       <div class="card-panel-header">Quick Links</div>
       <div class="p-3 d-flex flex-column gap-2">
         <a href="documents.php" class="btn btn-outline-secondary text-start"><i class="bi bi-file-earmark-text me-2"></i>All Documents</a>
         <a href="dashboard.php" class="btn btn-outline-secondary text-start"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
         <a href="relief_dashboard.php" class="btn btn-outline-secondary text-start"><i class="bi bi-bar-chart-line me-2"></i>Relief Dashboard</a>
+      </div>
+    </div>
+
+    <div class="card-panel">
+      <div class="card-panel-header d-flex justify-content-between align-items-center">
+        <span><?= $seesAll ? 'Document Status Report' : 'My Document Status Report' ?></span>
+        <span class="text-muted small"><?= number_format($statusTotal) ?> total</span>
+      </div>
+      <div class="p-3">
+        <?php if ($statusTotal === 0): ?>
+          <div class="text-center text-muted py-4">No documents yet.</div>
+        <?php else: ?>
+          <canvas id="statusReportChart" height="180"></canvas>
+          <div class="d-flex flex-column gap-1 mt-3">
+            <?php foreach ($statusBreakdown as $status => $count): ?>
+              <div class="d-flex justify-content-between align-items-center small">
+                <span><span class="status-dot" style="background:<?= e($statusColors[$status]) ?>"></span> <?= e($status) ?></span>
+                <span class="fw-semibold"><?= number_format($count) ?></span>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
       </div>
     </div>
   </div>
@@ -132,7 +174,12 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php
-$extraScripts = '<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>';
+$extraScripts = '<script>
+const STATUS_LABELS = ' . json_encode(array_keys($statusBreakdown)) . ';
+const STATUS_DATA = ' . json_encode(array_values($statusBreakdown)) . ';
+const STATUS_COLORS = ' . json_encode(array_values($statusColors)) . ';
+</script>';
+$extraScripts .= '<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>';
 $extraScripts .= '<script src="' . e(asset('assets/js/home.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

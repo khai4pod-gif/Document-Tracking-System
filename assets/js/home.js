@@ -23,7 +23,32 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('quickSearchInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); runQuickSearch(); }
   });
+
+  renderStatusReportChart();
 });
+
+function renderStatusReportChart() {
+  const el = document.getElementById('statusReportChart');
+  if (!el || typeof Chart === 'undefined') return;
+
+  new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: STATUS_LABELS,
+      datasets: [{
+        data: STATUS_DATA,
+        backgroundColor: STATUS_COLORS,
+        borderWidth: 2,
+        borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      cutout: '65%',
+    },
+  });
+}
 
 function startScanner() {
   const frame = document.getElementById('scannerFrame');

@@ -53,6 +53,37 @@ class Document
         ];
     }
 
+    /**
+     * Count of non-archived documents per status, for the home-page status
+     * report. Every status appears even at zero, in the same order used
+     * throughout the UI. $creatorId narrows to that user's own documents;
+     * null counts agency-wide.
+     *
+     * @return array<string,int>
+     */
+    public function getStatusBreakdown(?int $creatorId = null): array
+    {
+        $sql = "SELECT status, COUNT(*) AS cnt FROM documents WHERE is_archived = 0";
+        $params = [];
+        if ($creatorId !== null) {
+            $sql .= " AND created_by = :creator";
+            $params['creator'] = $creatorId;
+        }
+        $sql .= " GROUP BY status";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        $counts = array_fill_keys(
+            ['Draft', 'Pending Routing', 'In Transit', 'Received', 'Completed', 'Overdue'],
+            0
+        );
+        foreach ($stmt->fetchAll() as $row) {
+            $counts[$row['status']] = (int)$row['cnt'];
+        }
+        return $counts;
+    }
+
     /** $creatorId narrows the list to that user's own documents; null lists all. */
     public function getRecent(int $limit = 8, ?int $creatorId = null): array
     {

@@ -63,6 +63,54 @@ final class DocumentTest extends TestCase
         $this->assertSame("DOC-{$year}-000001", $result['tracking_number']);
     }
 
+    public function testGetStatusBreakdownIncludesEveryStatusAtZeroWithNoDocuments(): void
+    {
+        $counts = $this->doc->getStatusBreakdown();
+
+        $this->assertSame([
+            'Draft' => 0, 'Pending Routing' => 0, 'In Transit' => 0,
+            'Received' => 0, 'Completed' => 0, 'Overdue' => 0,
+        ], $counts);
+    }
+
+    public function testGetStatusBreakdownCountsByActualStatus(): void
+    {
+        $draft = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->doc->create($this->baseDocData(), $this->admin); // second Draft
+
+        $routed = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->doc->route($routed['id'], [
+            'to_user_id' => $this->deptUserA, 'from_department_id' => null,
+            'to_department_id' => null, 'action_required' => 'Review', 'remarks' => null,
+        ], $this->admin); // -> In Transit
+
+        $completed = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->doc->markCompleted($completed['id'], $this->admin);
+
+        $counts = $this->doc->getStatusBreakdown();
+
+        $this->assertSame(2, $counts['Draft']);
+        $this->assertSame(1, $counts['In Transit']);
+        $this->assertSame(1, $counts['Completed']);
+        $this->assertSame(0, $counts['Overdue']);
+    }
+
+    public function testGetStatusBreakdownScopesToCreatorAndExcludesArchived(): void
+    {
+        $mine = $this->doc->create($this->baseDocData(), $this->deptUserA);
+        $this->doc->create($this->baseDocData(), $this->deptUserB); // someone else's
+
+        $archived = $this->doc->create($this->baseDocData(), $this->deptUserA);
+        $this->doc->archive($archived['id'], $this->deptUserA, 'Closed out.');
+
+        $counts = $this->doc->getStatusBreakdown($this->deptUserA);
+
+        // Only $mine counts: deptUserB's document is out of scope and the
+        // archived one is excluded regardless of creator.
+        $this->assertSame(1, $counts['Draft']);
+        $this->assertSame(1, array_sum($counts));
+    }
+
     public function testCreateWritesAnAuditLogEntry(): void
     {
         $result = $this->doc->create($this->baseDocData(), $this->admin);
