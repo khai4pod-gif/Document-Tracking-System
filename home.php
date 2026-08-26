@@ -30,6 +30,7 @@ $statusColors = [
     'Completed'        => '#1e9e6b',
     'Overdue'          => '#e0473f',
 ];
+$statusTrend = $documentModel->getStatusTrend($scopeCreatorId);
 
 $pageTitle = 'Home';
 $pageIcon  = 'bi-house-door';
@@ -160,6 +161,24 @@ include __DIR__ . '/includes/header.php';
   </div>
 </div>
 
+<div class="row g-3 mt-0">
+  <div class="col-12">
+    <div class="card-panel">
+      <div class="card-panel-header d-flex justify-content-between align-items-center">
+        <span><?= $seesAll ? 'Document Status Trend' : 'My Document Status Trend' ?></span>
+        <span class="text-muted small">Last 6 months, by month created</span>
+      </div>
+      <div class="p-3">
+        <?php if (empty($statusTrend['labels'])): ?>
+          <div class="text-center text-muted py-4">Not enough history yet.</div>
+        <?php else: ?>
+          <canvas id="statusTrendChart" height="90"></canvas>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Multiple-match results modal -->
 <div class="modal fade" id="searchResultsModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -178,6 +197,9 @@ $extraScripts = '<script>
 const STATUS_LABELS = ' . json_encode(array_keys($statusBreakdown)) . ';
 const STATUS_DATA = ' . json_encode(array_values($statusBreakdown)) . ';
 const STATUS_COLORS = ' . json_encode(array_values($statusColors)) . ';
+const STATUS_TREND_LABELS = ' . json_encode($statusTrend['labels']) . ';
+const STATUS_TREND_SERIES = ' . json_encode($statusTrend['series']) . ';
+const STATUS_TREND_COLORS = ' . json_encode($statusColors) . ';
 </script>';
 $extraScripts .= '<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>';
 $extraScripts .= '<script src="' . e(asset('assets/js/home.js')) . '"></script>';

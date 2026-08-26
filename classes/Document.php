@@ -84,6 +84,49 @@ class Document
         return $counts;
     }
 
+    /**
+     * Monthly document counts per status, for the home-page status trend
+     * line chart. Only months with at least one document appear (same
+     * convention as Relief::getTrendData()) — gaps aren't zero-filled.
+     * $creatorId narrows to that user's own documents; null is agency-wide.
+     *
+     * @return array{labels: string[], series: array<string,int[]>}
+     */
+    public function getStatusTrend(?int $creatorId = null, int $months = 6): array
+    {
+        $sql = "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, status, COUNT(*) AS cnt
+                FROM documents
+                WHERE is_archived = 0
+                  AND created_at >= DATE_SUB(CURDATE(), INTERVAL :months MONTH)";
+        if ($creatorId !== null) {
+            $sql .= " AND created_by = :creator";
+        }
+        $sql .= " GROUP BY ym, status ORDER BY ym ASC";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':months', $months, PDO::PARAM_INT);
+        if ($creatorId !== null) {
+            $stmt->bindValue(':creator', $creatorId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        $labels = [];
+        foreach ($rows as $row) {
+            if (!in_array($row['ym'], $labels, true)) {
+                $labels[] = $row['ym'];
+            }
+        }
+
+        $statuses = ['Draft', 'Pending Routing', 'In Transit', 'Received', 'Completed', 'Overdue'];
+        $series = array_fill_keys($statuses, array_fill(0, count($labels), 0));
+        foreach ($rows as $row) {
+            $series[$row['status']][array_search($row['ym'], $labels, true)] = (int)$row['cnt'];
+        }
+
+        return ['labels' => $labels, 'series' => $series];
+    }
+
     /** $creatorId narrows the list to that user's own documents; null lists all. */
     public function getRecent(int $limit = 8, ?int $creatorId = null): array
     {

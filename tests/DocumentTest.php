@@ -111,6 +111,61 @@ final class DocumentTest extends TestCase
         $this->assertSame(1, array_sum($counts));
     }
 
+    /** Backdates a document's created_at directly — create() always stamps NOW(). */
+    private function backdate(int $documentId, string $monthsAgo): void
+    {
+        $stmt = $this->pdo()->prepare(
+            "UPDATE documents SET created_at = DATE_SUB(NOW(), INTERVAL :m MONTH) WHERE id = :id"
+        );
+        $stmt->execute(['m' => $monthsAgo, 'id' => $documentId]);
+    }
+
+    public function testGetStatusTrendGroupsByMonthAndStatus(): void
+    {
+        $thisMonthDraft = $this->doc->create($this->baseDocData(), $this->admin);
+
+        $lastMonthCompleted = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->doc->markCompleted($lastMonthCompleted['id'], $this->admin);
+        $this->backdate((int)$lastMonthCompleted['id'], '1');
+
+        $trend = $this->doc->getStatusTrend();
+
+        $thisYm = date('Y-m');
+        // Read back what MySQL actually stored rather than predicting it in
+        // PHP — DATE_SUB and PHP's strtotime can disagree by a month near
+        // month-end days (e.g. Jan 31 minus a month), so this stays correct
+        // regardless of what day the suite happens to run on.
+        $lastYm = $this->pdo()
+            ->query("SELECT DATE_FORMAT(created_at, '%Y-%m') FROM documents WHERE id = {$lastMonthCompleted['id']}")
+            ->fetchColumn();
+
+        $this->assertSame([$lastYm, $thisYm], $trend['labels']);
+        $this->assertSame(1, $trend['series']['Draft'][array_search($thisYm, $trend['labels'], true)]);
+        $this->assertSame(0, $trend['series']['Draft'][array_search($lastYm, $trend['labels'], true)]);
+        $this->assertSame(1, $trend['series']['Completed'][array_search($lastYm, $trend['labels'], true)]);
+    }
+
+    public function testGetStatusTrendExcludesMonthsOutsideTheWindow(): void
+    {
+        $old = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->backdate((int)$old['id'], '9'); // outside the default 6-month window
+
+        $trend = $this->doc->getStatusTrend(null, 6);
+
+        $this->assertNotContains(date('Y-m', strtotime('-9 months')), $trend['labels']);
+        $this->assertSame(0, array_sum($trend['series']['Draft']));
+    }
+
+    public function testGetStatusTrendScopesToCreator(): void
+    {
+        $this->doc->create($this->baseDocData(), $this->deptUserA);
+        $this->doc->create($this->baseDocData(), $this->deptUserB);
+
+        $trend = $this->doc->getStatusTrend($this->deptUserA);
+
+        $this->assertSame(1, array_sum($trend['series']['Draft']));
+    }
+
     public function testCreateWritesAnAuditLogEntry(): void
     {
         $result = $this->doc->create($this->baseDocData(), $this->admin);

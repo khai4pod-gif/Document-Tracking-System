@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   renderStatusReportChart();
+  renderStatusTrendChart();
 });
 
 function renderStatusReportChart() {
@@ -46,6 +47,39 @@ function renderStatusReportChart() {
       responsive: true,
       plugins: { legend: { display: false } },
       cutout: '65%',
+    },
+  });
+}
+
+function renderStatusTrendChart() {
+  const el = document.getElementById('statusTrendChart');
+  if (!el || typeof Chart === 'undefined') return;
+
+  // Only plot statuses that actually occurred in the window — a flat zero
+  // line for a status that never happened just adds legend noise.
+  const datasets = Object.keys(STATUS_TREND_SERIES)
+    .filter((status) => STATUS_TREND_SERIES[status].some((n) => n > 0))
+    .map((status) => ({
+      label: status,
+      data: STATUS_TREND_SERIES[status],
+      borderColor: STATUS_TREND_COLORS[status],
+      backgroundColor: STATUS_TREND_COLORS[status],
+      pointBackgroundColor: STATUS_TREND_COLORS[status],
+      pointRadius: 3,
+      tension: 0.35,
+    }));
+
+  new Chart(el, {
+    type: 'line',
+    data: { labels: STATUS_TREND_LABELS, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } },
+        x: { grid: { display: false } },
+      },
     },
   });
 }
