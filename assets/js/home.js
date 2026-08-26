@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   renderStatusReportChart();
-  renderStatusTrendChart();
+  initPerformancePanel();
 });
 
 function renderStatusReportChart() {
@@ -51,35 +51,94 @@ function renderStatusReportChart() {
   });
 }
 
-function renderStatusTrendChart() {
-  const el = document.getElementById('statusTrendChart');
+/* ---------------- Individual Performance panel ---------------- */
+
+let complianceChart = null;
+
+const PERF_PERIOD_LABELS = {
+  as_of_today: 'As of Today',
+  today: 'Today',
+  week: 'This Week',
+  month: 'This Month',
+  quarter: 'This Quarter',
+  year: 'This Year',
+};
+
+function initPerformancePanel() {
+  const tabs = document.getElementById('perfTabs');
+  if (!tabs) return;
+
+  tabs.addEventListener('click', (e) => {
+    const btn = e.target.closest('.perf-tab');
+    if (!btn) return;
+    tabs.querySelectorAll('.perf-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadPerformanceSummary(btn.dataset.period);
+  });
+
+  loadPerformanceSummary('today');
+}
+
+function loadPerformanceSummary(period) {
+  fetch('ajax/performance_summary.php?period=' + encodeURIComponent(period))
+    .then((r) => r.json())
+    .then((res) => {
+      if (!res.success) return;
+      renderPerformanceSummary(res.summary);
+      const subtitle = document.getElementById('perfSubtitle');
+      if (subtitle) subtitle.textContent = PERF_PERIOD_LABELS[res.period] || 'Today';
+    })
+    .catch(() => notify('error', 'Could not load performance data.'));
+}
+
+function renderPerformanceSummary(s) {
+  document.getElementById('perfAssignedTotal').textContent = s.assigned.total;
+  document.getElementById('perfForAction').textContent = s.assigned.for_action;
+  document.getElementById('perfPendingReceipt').textContent = s.assigned.pending_receipt;
+
+  document.getElementById('perfActiveTotal').textContent = s.active.total;
+  document.getElementById('perfBacklog').textContent = s.active.backlog;
+  document.getElementById('perfDueToday').textContent = s.active.due_today;
+  document.getElementById('perfDue3Days').textContent = s.active.due_3days;
+  document.getElementById('perfNoDeadline').textContent = s.active.no_deadline;
+
+  document.getElementById('perfResolvedTotal').textContent = s.resolved.total;
+  document.getElementById('perfCompliant').textContent = s.resolved.compliant;
+  document.getElementById('perfNonCompliant').textContent = s.resolved.non_compliant;
+  document.getElementById('perfExempt').textContent = s.resolved.exempt;
+
+  renderComplianceGauge(s.compliance_rate);
+}
+
+function renderComplianceGauge(rate) {
+  const el = document.getElementById('complianceGauge');
+  const pctEl = document.getElementById('perfCompliancePct');
+  const tagEl = document.getElementById('perfComplianceTag');
   if (!el || typeof Chart === 'undefined') return;
 
-  // Only plot statuses that actually occurred in the window — a flat zero
-  // line for a status that never happened just adds legend noise.
-  const datasets = Object.keys(STATUS_TREND_SERIES)
-    .filter((status) => STATUS_TREND_SERIES[status].some((n) => n > 0))
-    .map((status) => ({
-      label: status,
-      data: STATUS_TREND_SERIES[status],
-      borderColor: STATUS_TREND_COLORS[status],
-      backgroundColor: STATUS_TREND_COLORS[status],
-      pointBackgroundColor: STATUS_TREND_COLORS[status],
-      pointRadius: 3,
-      tension: 0.35,
-    }));
+  const value = rate === null ? 0 : rate;
+  const color = rate === null ? '#c3c9d4' : rate >= 90 ? '#1e9e6b' : rate >= 70 ? '#f2994a' : '#e0473f';
+  const tag = rate === null ? 'No Data' : rate >= 90 ? 'Excellent' : rate >= 70 ? 'Fair' : 'Needs Attention';
 
-  new Chart(el, {
-    type: 'line',
-    data: { labels: STATUS_TREND_LABELS, datasets },
+  pctEl.textContent = rate === null ? '—' : rate + '%';
+  pctEl.style.color = color;
+  tagEl.textContent = tag;
+  tagEl.style.color = color;
+
+  if (complianceChart) complianceChart.destroy();
+  complianceChart = new Chart(el, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [value, 100 - value],
+        backgroundColor: [color, '#eef1f5'],
+        borderWidth: 0,
+      }],
+    },
     options: {
       responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } },
-      scales: {
-        y: { beginAtZero: true, ticks: { precision: 0 } },
-        x: { grid: { display: false } },
-      },
+      cutout: '75%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
     },
   });
 }

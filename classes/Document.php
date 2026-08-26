@@ -127,6 +127,143 @@ class Document
         return ['labels' => $labels, 'series' => $series];
     }
 
+    public const PERFORMANCE_PERIODS = ['as_of_today', 'today', 'week', 'month', 'quarter', 'year'];
+
+    /**
+     * A due-date filter fragment for one of PERFORMANCE_PERIODS. A NULL due
+     * date always matches — undated work doesn't belong to any period, so
+     * it stays visible no matter which one is selected.
+     */
+    private function dueDatePeriodClause(string $period): string
+    {
+        return match ($period) {
+            'as_of_today' => "(due_date IS NULL OR due_date <= CURDATE())",
+            'week'        => "(due_date IS NULL OR YEARWEEK(due_date, 3) = YEARWEEK(CURDATE(), 3))",
+            'month'       => "(due_date IS NULL OR (YEAR(due_date) = YEAR(CURDATE()) AND MONTH(due_date) = MONTH(CURDATE())))",
+            'quarter'     => "(due_date IS NULL OR (YEAR(due_date) = YEAR(CURDATE()) AND QUARTER(due_date) = QUARTER(CURDATE())))",
+            'year'        => "(due_date IS NULL OR YEAR(due_date) = YEAR(CURDATE()))",
+            default       => "(due_date IS NULL OR due_date = CURDATE())", // 'today'
+        };
+    }
+
+    /**
+     * Individual performance summary for one user's assigned work, scoped
+     * to a due-date period (see PERFORMANCE_PERIODS / dueDatePeriodClause).
+     *
+     * "Assigned" / "Active" are the same underlying set — documents this
+     * user currently holds that aren't finished — sliced two ways: by
+     * whether they've acknowledged receipt yet, and by how urgent the due
+     * date is. "Resolved" are the documents they've completed, judged
+     * against the completion timestamp recorded in document_logs (not
+     * documents.updated_at, which can move for reasons unrelated to
+     * completion, e.g. a later title edit).
+     *
+     * @return array{
+     *   assigned: array{total:int, for_action:int, pending_receipt:int},
+     *   active: array{total:int, backlog:int, due_today:int, due_3days:int, no_deadline:int},
+     *   resolved: array{total:int, compliant:int, non_compliant:int, exempt:int},
+     *   compliance_rate: ?float,
+     * }
+     */
+    public function getPerformanceSummary(int $userId, string $period = 'today'): array
+    {
+        $periodSql = $this->dueDatePeriodClause($period);
+
+        $pendingStmt = $this->pdo->prepare(
+            "SELECT status, due_date FROM documents
+             WHERE current_holder_id = :user AND is_archived = 0
+               AND status IN ('In Transit', 'Received')
+               AND {$periodSql}"
+        );
+        $pendingStmt->execute(['user' => $userId]);
+        $pending = $pendingStmt->fetchAll();
+
+        $forAction = 0;
+        $pendingReceipt = 0;
+        $backlog = 0;
+        $dueToday = 0;
+        $due3Days = 0;
+        $noDeadline = 0;
+        $today = new DateTimeImmutable('today');
+        $in3Days = $today->modify('+3 days');
+
+        foreach ($pending as $row) {
+            if ($row['status'] === 'Received') {
+                $forAction++;
+            } else {
+                $pendingReceipt++;
+            }
+
+            if ($row['due_date'] === null) {
+                $noDeadline++;
+                continue;
+            }
+            $due = new DateTimeImmutable($row['due_date']);
+            if ($due < $today) {
+                $backlog++;
+            } elseif ($due == $today) {
+                $dueToday++;
+            } elseif ($due <= $in3Days) {
+                $due3Days++;
+            }
+        }
+
+        $resolvedStmt = $this->pdo->prepare(
+            "SELECT d.due_date, d.updated_at,
+                    (SELECT MAX(l.created_at) FROM document_logs l
+                      WHERE l.document_id = d.id AND l.action = 'Completed') AS completed_at
+             FROM documents d
+             WHERE d.current_holder_id = :user AND d.is_archived = 0
+               AND d.status = 'Completed'
+               AND {$periodSql}"
+        );
+        $resolvedStmt->execute(['user' => $userId]);
+        $resolved = $resolvedStmt->fetchAll();
+
+        $compliant = 0;
+        $nonCompliant = 0;
+        $exempt = 0;
+
+        foreach ($resolved as $row) {
+            if ($row['due_date'] === null) {
+                $exempt++;
+                continue;
+            }
+            $completedAt = $row['completed_at'] ?? $row['updated_at'];
+            $completedDate = (new DateTimeImmutable($completedAt))->setTime(0, 0);
+            $dueDate = new DateTimeImmutable($row['due_date']);
+            if ($completedDate <= $dueDate) {
+                $compliant++;
+            } else {
+                $nonCompliant++;
+            }
+        }
+
+        $complianceDenominator = $compliant + $nonCompliant;
+
+        return [
+            'assigned' => [
+                'total'            => count($pending),
+                'for_action'       => $forAction,
+                'pending_receipt'  => $pendingReceipt,
+            ],
+            'active' => [
+                'total'       => count($pending),
+                'backlog'     => $backlog,
+                'due_today'   => $dueToday,
+                'due_3days'   => $due3Days,
+                'no_deadline' => $noDeadline,
+            ],
+            'resolved' => [
+                'total'          => count($resolved),
+                'compliant'      => $compliant,
+                'non_compliant'  => $nonCompliant,
+                'exempt'         => $exempt,
+            ],
+            'compliance_rate' => $complianceDenominator > 0 ? round($compliant / $complianceDenominator * 100, 1) : null,
+        ];
+    }
+
     /** $creatorId narrows the list to that user's own documents; null lists all. */
     public function getRecent(int $limit = 8, ?int $creatorId = null): array
     {

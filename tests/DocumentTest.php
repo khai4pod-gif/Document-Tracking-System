@@ -166,6 +166,104 @@ final class DocumentTest extends TestCase
         $this->assertSame(1, array_sum($trend['series']['Draft']));
     }
 
+    public function testGetPerformanceSummarySplitsForActionAndPendingReceipt(): void
+    {
+        $notYetAcknowledged = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->doc->route($notYetAcknowledged['id'], [
+            'to_user_id' => $this->deptUserA, 'from_department_id' => null,
+            'to_department_id' => null, 'action_required' => 'Review', 'remarks' => null,
+        ], $this->admin); // -> In Transit, held by deptUserA
+
+        $acknowledged = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->doc->route($acknowledged['id'], [
+            'to_user_id' => $this->deptUserA, 'from_department_id' => null,
+            'to_department_id' => null, 'action_required' => 'Review', 'remarks' => null,
+        ], $this->admin);
+        $routeId = $this->doc->getRoutes($acknowledged['id'])[0]['id'];
+        $this->doc->receiveRoute((int)$routeId, $this->deptUserA); // -> Received
+
+        $summary = $this->doc->getPerformanceSummary($this->deptUserA, 'as_of_today');
+
+        $this->assertSame(2, $summary['assigned']['total']);
+        $this->assertSame(1, $summary['assigned']['for_action']); // Received
+        $this->assertSame(1, $summary['assigned']['pending_receipt']); // In Transit
+    }
+
+    public function testGetPerformanceSummaryBucketsBacklogDueTodayAndNoDeadline(): void
+    {
+        $overdue = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('-1 day'))]), $this->admin);
+        $this->routeTo($overdue['id'], $this->deptUserA);
+
+        $dueToday = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d')]), $this->admin);
+        $this->routeTo($dueToday['id'], $this->deptUserA);
+
+        $noDeadline = $this->doc->create($this->baseDocData(['due_date' => null]), $this->admin);
+        $this->routeTo($noDeadline['id'], $this->deptUserA);
+
+        $summary = $this->doc->getPerformanceSummary($this->deptUserA, 'as_of_today');
+
+        $this->assertSame(3, $summary['active']['total']);
+        $this->assertSame(1, $summary['active']['backlog']);
+        $this->assertSame(1, $summary['active']['due_today']);
+        $this->assertSame(1, $summary['active']['no_deadline']);
+    }
+
+    public function testGetPerformanceSummaryBucketsDueWithin3Days(): void
+    {
+        $soon = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('+2 days'))]), $this->admin);
+        $this->routeTo($soon['id'], $this->deptUserA);
+
+        // 'year' rather than 'as_of_today', which excludes future due dates by design.
+        $summary = $this->doc->getPerformanceSummary($this->deptUserA, 'year');
+
+        $this->assertSame(1, $summary['active']['due_3days']);
+    }
+
+    public function testGetPerformanceSummaryClassifiesComplianceAgainstCompletionLog(): void
+    {
+        $onTime = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('+1 day'))]), $this->deptUserA);
+        $this->doc->markCompleted($onTime['id'], $this->deptUserA);
+
+        $late = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('-1 day'))]), $this->deptUserA);
+        $this->doc->markCompleted($late['id'], $this->deptUserA);
+
+        $undated = $this->doc->create($this->baseDocData(['due_date' => null]), $this->deptUserA);
+        $this->doc->markCompleted($undated['id'], $this->deptUserA);
+
+        // 'year' rather than 'as_of_today', which would exclude $onTime's future due date.
+        $summary = $this->doc->getPerformanceSummary($this->deptUserA, 'year');
+
+        $this->assertSame(3, $summary['resolved']['total']);
+        $this->assertSame(1, $summary['resolved']['compliant']);
+        $this->assertSame(1, $summary['resolved']['non_compliant']);
+        $this->assertSame(1, $summary['resolved']['exempt']);
+        $this->assertSame(50.0, $summary['compliance_rate']);
+    }
+
+    public function testGetPerformanceSummaryExcludesOtherUsersAndArchivedDocuments(): void
+    {
+        $notMine = $this->doc->create($this->baseDocData(), $this->admin);
+        $this->routeTo($notMine['id'], $this->deptUserB);
+
+        $archived = $this->doc->create($this->baseDocData(), $this->deptUserA);
+        $this->doc->archive($archived['id'], $this->deptUserA, 'Closed out.');
+
+        $summary = $this->doc->getPerformanceSummary($this->deptUserA, 'as_of_today');
+
+        $this->assertSame(0, $summary['assigned']['total']);
+        $this->assertSame(0, $summary['resolved']['total']);
+        $this->assertNull($summary['compliance_rate']);
+    }
+
+    /** Routes a document to $userId with placeholder required fields. */
+    private function routeTo(int $documentId, int $userId): void
+    {
+        $this->doc->route($documentId, [
+            'to_user_id' => $userId, 'from_department_id' => null,
+            'to_department_id' => null, 'action_required' => 'Review', 'remarks' => null,
+        ], $this->admin);
+    }
+
     public function testCreateWritesAnAuditLogEntry(): void
     {
         $result = $this->doc->create($this->baseDocData(), $this->admin);

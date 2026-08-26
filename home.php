@@ -30,8 +30,6 @@ $statusColors = [
     'Completed'        => '#1e9e6b',
     'Overdue'          => '#e0473f',
 ];
-$statusTrend = $documentModel->getStatusTrend($scopeCreatorId);
-
 $pageTitle = 'Home';
 $pageIcon  = 'bi-house-door';
 include __DIR__ . '/includes/header.php';
@@ -164,16 +162,84 @@ include __DIR__ . '/includes/header.php';
 <div class="row g-3 mt-0">
   <div class="col-12">
     <div class="card-panel">
-      <div class="card-panel-header d-flex justify-content-between align-items-center">
-        <span><?= $seesAll ? 'Document Status Trend' : 'My Document Status Trend' ?></span>
-        <span class="text-muted small">Last 6 months, by month created</span>
+      <div class="card-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <div>Individual Performance</div>
+          <div class="text-muted small fw-normal" id="perfSubtitle">Today (<?= date('M j, Y') ?>)</div>
+        </div>
+        <div class="perf-tabs" id="perfTabs">
+          <button type="button" class="perf-tab" data-period="as_of_today">As of Today</button>
+          <button type="button" class="perf-tab active" data-period="today">Today</button>
+          <button type="button" class="perf-tab" data-period="week">This Week</button>
+          <button type="button" class="perf-tab" data-period="month">Month</button>
+          <button type="button" class="perf-tab" data-period="quarter">Quarter</button>
+          <button type="button" class="perf-tab" data-period="year">Year</button>
+        </div>
       </div>
       <div class="p-3">
-        <?php if (empty($statusTrend['labels'])): ?>
-          <div class="text-center text-muted py-4">Not enough history yet.</div>
-        <?php else: ?>
-          <canvas id="statusTrendChart" height="90"></canvas>
-        <?php endif; ?>
+        <div class="row g-3">
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-file-earmark-text" style="color:var(--accent);"></i> Documents Assigned</div>
+                <div class="perf-value" id="perfAssignedTotal">0</div>
+                <div class="perf-sub-row">
+                  <div class="perf-sub">For Action<b id="perfForAction">0</b></div>
+                  <div class="perf-sub">Pending for Receipt<b id="perfPendingReceipt">0</b></div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--accent);"></div>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-hourglass-split" style="color:var(--accent-2);"></i> Active Documents (Pending)</div>
+                <div class="perf-value" id="perfActiveTotal">0</div>
+                <div class="perf-sub-row">
+                  <div class="perf-sub">Backlog<b id="perfBacklog" style="color:var(--danger);">0</b></div>
+                  <div class="perf-sub">Due Today<b id="perfDueToday">0</b></div>
+                  <div class="perf-sub">Due in 3 Days<b id="perfDue3Days">0</b></div>
+                  <div class="perf-sub">No Deadline<b id="perfNoDeadline">0</b></div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--accent-2);"></div>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-check-circle" style="color:var(--success);"></i> Resolved Documents</div>
+                <div class="perf-value" id="perfResolvedTotal">0</div>
+                <div class="perf-sub-row">
+                  <div class="perf-sub">Compliant<b id="perfCompliant" style="color:var(--success);">0</b></div>
+                  <div class="perf-sub">Non-Compliant<b id="perfNonCompliant" style="color:var(--danger);">0</b></div>
+                  <div class="perf-sub">Exempt<b id="perfExempt">0</b></div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--success);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-md-6 col-lg-4 mx-auto">
+            <div class="perf-card">
+              <div class="perf-card-body text-center">
+                <div class="perf-card-title justify-content-center"><i class="bi bi-pie-chart" style="color:var(--success);"></i> Compliance Rate</div>
+                <div class="text-muted small mb-3">Compliant ÷ (Compliant + Non-Compliant) — exempt excluded</div>
+                <div class="perf-gauge">
+                  <canvas id="complianceGauge"></canvas>
+                  <div class="perf-gauge-label">
+                    <span class="pct" id="perfCompliancePct">—</span>
+                    <span class="tag" id="perfComplianceTag"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--success);"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -197,9 +263,6 @@ $extraScripts = '<script>
 const STATUS_LABELS = ' . json_encode(array_keys($statusBreakdown)) . ';
 const STATUS_DATA = ' . json_encode(array_values($statusBreakdown)) . ';
 const STATUS_COLORS = ' . json_encode(array_values($statusColors)) . ';
-const STATUS_TREND_LABELS = ' . json_encode($statusTrend['labels']) . ';
-const STATUS_TREND_SERIES = ' . json_encode($statusTrend['series']) . ';
-const STATUS_TREND_COLORS = ' . json_encode($statusColors) . ';
 </script>';
 $extraScripts .= '<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>';
 $extraScripts .= '<script src="' . e(asset('assets/js/home.js')) . '"></script>';

@@ -143,6 +143,38 @@ body{
 .kpi-value{font-size:1.65rem;font-weight:800;color:var(--navy-900);line-height:1.1;}
 .kpi-label{font-size:.8rem;color:#7c8698;font-weight:600;}
 
+/* ---------- Individual Performance (home.php) ---------- */
+.perf-tabs{display:flex;flex-wrap:wrap;gap:6px;}
+.perf-tab{
+  border:1px solid var(--border);background:#fff;color:#586173;font-weight:600;font-size:.82rem;
+  padding:6px 14px;border-radius:999px;cursor:pointer;transition:background .15s,color .15s,border-color .15s;
+}
+.perf-tab:hover{border-color:var(--accent);color:var(--accent);}
+.perf-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+.perf-card{
+  background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden;height:100%;
+  display:flex;flex-direction:column;
+}
+.perf-card-body{padding:18px 20px;flex:1;}
+.perf-card-title{
+  display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--navy-900);margin-bottom:10px;
+}
+.perf-card-title i{font-size:1rem;}
+.perf-value{font-size:2rem;font-weight:800;color:var(--navy-900);line-height:1;margin-bottom:14px;}
+.perf-sub-row{display:flex;gap:22px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;}
+.perf-sub{font-size:.78rem;color:#7c8698;font-weight:600;}
+.perf-sub b{display:block;font-size:1.05rem;color:var(--navy-900);font-weight:800;margin-top:2px;}
+.perf-accent{height:4px;width:100%;}
+
+.perf-gauge{position:relative;width:180px;height:180px;margin:0 auto;}
+.perf-gauge canvas{width:100%!important;height:100%!important;}
+.perf-gauge-label{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+.perf-gauge-label .pct{font-size:1.6rem;font-weight:800;color:var(--navy-900);}
+.perf-gauge-label .tag{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+
 .card-panel{background:#fff;border:1px solid var(--border);border-radius:14px;}
 .card-panel-header{
   padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700;color:var(--navy-900);
