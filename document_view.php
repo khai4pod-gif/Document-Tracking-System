@@ -68,6 +68,119 @@ $logIcons = [
     'Approved' => 'bi-patch-check', 'Rejected' => 'bi-x-octagon',
 ];
 
+// ---------------------------------------------------------------------
+// DOCUMENT TIMELINE
+// One card per office that has held the document, with that office's
+// audit-trail entries nested inside it as internal actions. This replaces
+// the old side-by-side "Routing History" table and "Audit Trail" list,
+// which showed the same journey twice without connecting the two.
+// ---------------------------------------------------------------------
+$routesAsc = array_reverse($routes);   // getRoutes() returns newest first
+
+$hops = [[
+    'office'      => $doc['origin_department_name'] ?: 'Originating office',
+    'holder'      => $doc['creator_name'],
+    'started'     => $doc['created_at'],
+    'transaction' => null,
+    'remarks'     => null,
+    'route'       => null,
+]];
+
+foreach ($routesAsc as $r) {
+    $hops[] = [
+        'office'      => $r['to_dept_name'] ?: $r['to_name'],
+        'holder'      => $r['to_name'],
+        'started'     => $r['routed_at'],
+        'transaction' => $r['action_required'],
+        'remarks'     => $r['remarks'],
+        'route'       => $r,
+    ];
+}
+
+$hopCount = count($hops);
+for ($i = 0; $i < $hopCount; $i++) {
+    $hops[$i]['ended']   = ($i + 1 < $hopCount) ? $hops[$i + 1]['started'] : null;
+    $hops[$i]['actions'] = [];
+}
+
+// Attribute each log entry to a hop. 'Routed' and 'Received' are matched by
+// sequence rather than by timestamp: a document can be created and routed in
+// the same second, and ordering on time alone files them under the wrong
+// office. Route k always departs hop k and arrives at hop k+1.
+$routedSeen = 0;
+$receivedSeen = 0;
+
+foreach ($logs as $log) {
+    if ($log['action'] === 'Created') {
+        $idx = 0;
+    } elseif ($log['action'] === 'Routed') {
+        $idx = min($routedSeen++, $hopCount - 1);
+    } elseif ($log['action'] === 'Received') {
+        $idx = min($receivedSeen++ + 1, $hopCount - 1);
+    } else {
+        // Everything else belongs to whichever office held it at the time.
+        $t = strtotime($log['created_at']);
+        $idx = 0;
+        for ($i = 0; $i < $hopCount; $i++) {
+            if (strtotime($hops[$i]['started']) <= $t) {
+                $idx = $i;
+            }
+        }
+    }
+    $hops[$idx]['actions'][] = $log;
+}
+
+$now        = time();
+$activeHops = 0;
+
+foreach ($hops as $i => &$hop) {
+    $start = strtotime($hop['started']);
+    $end   = $hop['ended'] ? strtotime($hop['ended']) : $now;
+
+    $hop['elapsed'] = format_duration($end - $start);
+    $hop['is_last'] = ($i === $hopCount - 1);
+
+    if (!$hop['is_last']) {
+        $hop['state'] = 'Routed';
+    } elseif ((int)$doc['is_archived'] === 1) {
+        $hop['state'] = 'Archived';
+    } elseif ($doc['status'] === 'Completed') {
+        $hop['state'] = 'Completed';
+    } else {
+        $hop['state'] = 'Active';
+        $activeHops++;
+    }
+
+    // An arriving route stays 'Pending' until the recipient acknowledges it.
+    $hop['awaiting'] = $hop['route'] !== null && $hop['route']['status'] === 'Pending';
+}
+unset($hop);
+
+// The clock stops once the document is closed out.
+$docClosed   = ((int)$doc['is_archived'] === 1) || $doc['status'] === 'Completed';
+$timelineEnd = ($docClosed && !empty($logs)) ? strtotime($logs[count($logs) - 1]['created_at']) : $now;
+$totalElapsed = format_duration($timelineEnd - strtotime($doc['created_at']));
+
+// Due date shown against the office currently holding the document.
+$dueChip = null;
+if (!empty($doc['due_date'])) {
+    $dueTs = strtotime($doc['due_date'] . ' 23:59:59');
+    $dueChip = [
+        'label'   => date('M d, Y', strtotime($doc['due_date'])),
+        'overdue' => $dueTs < $now,
+        'note'    => $dueTs >= $now
+            ? format_duration($dueTs - $now) . ' remaining'
+            : 'overdue by ' . format_duration($now - $dueTs),
+    ];
+}
+
+$logTone = [
+    'Created' => 'neutral', 'Updated' => 'neutral', 'Routed' => 'info',
+    'Received' => 'done', 'Completed' => 'done', 'Approved' => 'done',
+    'Rejected' => 'warn', 'Archived' => 'warn', 'Restored' => 'info',
+    'Attachment Added' => 'neutral', 'Attachment Removed' => 'neutral',
+];
+
 $canApprove = in_array(current_user()['role'], ['admin', 'approver'], true);
 $isPendingApproval = $doc['approval_status'] === 'Pending';
 $canRoute = user_can_route(current_user(), $pdo);
@@ -165,6 +278,11 @@ include __DIR__ . '/includes/header.php';
   </div>
 
   <table class="print-slip__routing">
+    <colgroup>
+      <col style="width:16%"><col style="width:9%"><col style="width:8%">
+      <col style="width:34%">
+      <col style="width:16%"><col style="width:9%"><col style="width:8%">
+    </colgroup>
     <thead>
       <tr>
         <th colspan="3">From</th>
@@ -179,13 +297,18 @@ include __DIR__ . '/includes/header.php';
     </thead>
     <tbody>
       <?php
-      $slipRowCount = max(count($routes), 8);
+      // Oldest first: a routing slip is read top-down as the document
+      // travelled. getRoutes() returns newest first for the screen.
+      $slipRowCount = max(count($routesAsc), 8);
       for ($i = 0; $i < $slipRowCount; $i++):
-          $r = $routes[$i] ?? null;
+          $r = $routesAsc[$i] ?? null;
       ?>
         <tr>
           <?php if ($r): ?>
-            <td class="text-uppercase fw-semibold" colspan="1"><?= e($r['from_name']) ?></td>
+            <td>
+              <div class="print-slip__office"><?= e($r['from_dept_name'] ?? '—') ?></div>
+              <div class="print-slip__person"><?= e($r['from_name']) ?></div>
+            </td>
             <td><?= date('d M y', strtotime($r['routed_at'])) ?></td>
             <td><?= date('g:i A', strtotime($r['routed_at'])) ?></td>
             <td>
@@ -207,11 +330,14 @@ include __DIR__ . '/includes/header.php';
               <?php endif; ?>
               <?php if ($r['remarks']): ?><div><?= e($r['remarks']) ?></div><?php endif; ?>
             </td>
-            <td class="text-uppercase fw-semibold"><?= e($r['to_name']) ?></td>
+            <td>
+              <div class="print-slip__office"><?= e($r['to_dept_name'] ?? '—') ?></div>
+              <div class="print-slip__person"><?= e($r['to_name']) ?></div>
+            </td>
             <td><?= $r['received_at'] ? date('d M y', strtotime($r['received_at'])) : '—' ?></td>
             <td><?= $r['received_at'] ? date('g:i A', strtotime($r['received_at'])) : '—' ?></td>
           <?php else: ?>
-            <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td>
+            <td class="print-slip__blank">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td>
           <?php endif; ?>
         </tr>
       <?php endfor; ?>
@@ -271,11 +397,25 @@ include __DIR__ . '/includes/header.php';
   .print-slip__routing { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
   .print-slip__routing th, .print-slip__routing td {
     border: 1px solid #999; padding: 6px 6px; text-align: left; vertical-align: top;
+    /* Fixed layout plus long office names: wrap inside the cell rather than
+       letting a long word spill over the one beside it. */
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
+  .print-slip__office {
+    text-transform: uppercase; font-weight: 700; letter-spacing: .01em;
+  }
+  .print-slip__person { color: #444; font-size: 9px; margin-top: 1px; }
   .print-slip__routing thead th {
     text-transform: uppercase; font-size: 9.5px; letter-spacing: .03em; text-align: center; background: #f2f3f7;
   }
-  .print-slip__routing tbody td { height: 30px; }
+  /* Filled rows size to their content — a fixed height is what let two
+     wrapped lines collide. Blank ruled rows keep the writing space. */
+  .print-slip__routing tbody td { height: auto; }
+  .print-slip__routing tbody td.print-slip__blank { height: 30px; }
+  /* The timeline is screen-only; the print slip carries the routing record. */
+  .dt-head, .dt-list { display: none !important; }
   .print-slip__action {
     font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em;
     line-height: 1.25; margin-bottom: 3px;
@@ -290,6 +430,117 @@ include __DIR__ . '/includes/header.php';
   }
   .print-slip__status--received { background: #d9f2e3; color: #1a7a45; }
   .print-slip__status--returned { background: #fadada; color: #a4262c; }
+}
+/* ===================== Document Timeline ===================== */
+.dt-head {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: .75rem;
+}
+.dt-head__sub { font-size: .78rem; font-weight: 400; color: #7b8593; margin-top: .1rem; }
+.dt-head__tools { display: flex; align-items: center; gap: .6rem; }
+.dt-elapsed {
+  background: #eef4ff; border: 1px solid #dbe6fd; color: #2f4d80;
+  border-radius: 8px; padding: .3rem .65rem; font-size: .8rem; white-space: nowrap;
+}
+.dt-elapsed b { font-weight: 700; }
+
+.dt-list { list-style: none; margin: 0; padding: 0 0 0 2.15rem; position: relative; }
+.dt-list::before {
+  content: ""; position: absolute; left: .82rem; top: .6rem; bottom: .6rem;
+  width: 2px; background: #e2e8f0;
+}
+.dt-hop { position: relative; }
+.dt-hop + .dt-hop { margin-top: .85rem; }
+.dt-hop__icon {
+  position: absolute; left: -2.15rem; top: .55rem;
+  width: 1.65rem; height: 1.65rem; border-radius: 50%;
+  background: #35507a; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .8rem; box-shadow: 0 0 0 3px #fff;
+}
+
+.dt-card { border: 1px solid #e3e9f2; border-radius: 10px; padding: .85rem 1rem; background: #fff; }
+.dt-card__head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; }
+.dt-office {
+  font-weight: 700; font-size: .93rem; letter-spacing: .01em;
+  color: #1d2b3a; display: flex; align-items: center; gap: .4rem;
+}
+.dt-live {
+  width: .5rem; height: .5rem; border-radius: 50%; background: #2f6fd0;
+  box-shadow: 0 0 0 3px rgba(47,111,208,.18);
+}
+
+.dt-state {
+  font-size: .7rem; font-weight: 700; border-radius: 999px;
+  padding: .18em .7em; white-space: nowrap; border: 1px solid transparent;
+}
+.dt-state--routed    { background: #eef2f7; color: #56646f; border-color: #dde4eb; }
+.dt-state--active    { background: #e7f0fd; color: #2f6fd0; border-color: #cfe0fa; }
+.dt-state--completed { background: #e4f4ea; color: #1f7a45; border-color: #cbe9d6; }
+.dt-state--archived  { background: #f0eef5; color: #6b5f8c; border-color: #e0dbeb; }
+
+.dt-meta {
+  display: flex; flex-wrap: wrap; gap: .25rem 1rem;
+  font-size: .8rem; color: #6b7885; margin-top: .4rem;
+}
+.dt-meta i { margin-right: .25rem; }
+
+.dt-txn { font-size: .82rem; color: #46525e; margin-top: .5rem; }
+.dt-txn__label { color: #8593a0; margin-right: .35rem; }
+.dt-txn b { color: #1d2b3a; letter-spacing: .01em; }
+.dt-pill {
+  display: inline-block; margin-left: .4rem; font-size: .68rem; font-weight: 700;
+  background: #eef2f7; color: #56646f; border-radius: 4px; padding: .1em .45em;
+}
+.dt-remark { font-size: .8rem; color: #7b8593; font-style: italic; margin-top: .2rem; }
+
+.dt-flag {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: .4rem;
+  margin-top: .55rem; font-size: .78rem; font-weight: 600;
+  border-radius: 6px; padding: .3rem .6rem; border: 1px solid transparent;
+}
+.dt-flag__note { font-weight: 400; opacity: .85; }
+.dt-flag--due  { background: #e4f4ea; color: #1f7a45; border-color: #cbe9d6; }
+.dt-flag--late { background: #fbe4e4; color: #a4262c; border-color: #f2cccc; }
+.dt-flag--wait { background: #fdf3d8; color: #8a5b00; border-color: #f2e2b4; }
+
+.dt-toggle {
+  display: flex; align-items: center; gap: .35rem; width: 100%;
+  margin-top: .7rem; padding: .4rem .55rem;
+  background: #f7f9fc; border: 1px solid #e6ecf4; border-radius: 7px;
+  font-size: .78rem; font-weight: 600; color: #56646f; text-align: left;
+}
+.dt-toggle:hover { background: #eef3fa; }
+.dt-count {
+  background: #dfe6ef; color: #46525e; border-radius: 4px;
+  padding: 0 .38em; font-size: .72rem; font-weight: 700;
+}
+.dt-toggle__chev { margin-left: auto; transition: transform .16s ease; }
+.dt-toggle[aria-expanded="true"] .dt-toggle__chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .dt-toggle__chev { transition: none; } }
+
+.dt-acts { margin-top: .5rem; display: flex; flex-direction: column; gap: .5rem; }
+.dt-act {
+  display: flex; gap: .6rem; align-items: flex-start;
+  border: 1px solid #edf1f6; border-radius: 8px; padding: .6rem .7rem; background: #fcfdfe;
+}
+.dt-act__icon {
+  flex-shrink: 0; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: .75rem;
+}
+.dt-act__icon--done    { background: #e4f4ea; color: #1f7a45; }
+.dt-act__icon--info    { background: #e7f0fd; color: #2f6fd0; }
+.dt-act__icon--warn    { background: #fdf3d8; color: #8a5b00; }
+.dt-act__icon--neutral { background: #eef2f7; color: #56646f; }
+.dt-act__body { flex: 1; min-width: 0; }
+.dt-act__title { font-size: .84rem; font-weight: 700; color: #1d2b3a; }
+.dt-act__by { font-size: .78rem; color: #6b7885; }
+.dt-act__note { font-size: .78rem; color: #7b8593; font-style: italic; margin-top: .15rem; }
+.dt-act__time { font-size: .72rem; color: #93a0ad; white-space: nowrap; flex-shrink: 0; }
+
+@media (max-width: 575.98px) {
+  .dt-act { flex-wrap: wrap; }
+  .dt-act__time { width: 100%; padding-left: 2.1rem; }
 }
 </style>
 
@@ -322,6 +573,11 @@ include __DIR__ . '/includes/header.php';
         </div>
       </div>
     </div>
+
+  </div>
+
+  <!-- Right column: attachments and links -->
+  <div class="col-lg-4">
 
     <div class="card-panel mb-3">
       <div class="card-panel-header d-flex justify-content-between">
@@ -385,50 +641,118 @@ include __DIR__ . '/includes/header.php';
       </div>
     </div>
 
-    <div class="card-panel">
-      <div class="card-panel-header">Routing History</div>
-      <div class="table-responsive">
-        <table class="table mb-0">
-          <thead><tr><th>From</th><th>To</th><th>Action Required</th><th>Status</th><th>Routed</th><th>Received</th></tr></thead>
-          <tbody>
-            <?php if (empty($routes)): ?>
-              <tr><td colspan="6" class="text-center text-muted py-4">This document has not been routed yet.</td></tr>
-            <?php else: foreach ($routes as $r): ?>
-              <tr>
-                <td><?= e($r['from_name']) ?></td>
-                <td><?= e($r['to_name']) ?></td>
-                <td><?= e($r['action_required']) ?><?php if ($r['remarks']): ?><div class="text-muted small"><?= e($r['remarks']) ?></div><?php endif; ?></td>
-                <td><span class="badge <?= $r['status'] === 'Received' ? 'bg-success' : ($r['status'] === 'Returned' ? 'bg-danger' : 'bg-warning text-dark') ?>"><?= e($r['status']) ?></span></td>
-                <td><?= date('M d, Y g:i A', strtotime($r['routed_at'])) ?></td>
-                <td><?= $r['received_at'] ? date('M d, Y g:i A', strtotime($r['received_at'])) : '—' ?></td>
-              </tr>
-            <?php endforeach; endif; ?>
-          </tbody>
-        </table>
-      </div>
-    </div>
   </div>
+</div>
 
-  <!-- Right column: Audit trail -->
-  <div class="col-lg-4">
+<!-- ===================== Document Timeline ===================== -->
+<div class="row g-3 mt-0">
+  <div class="col-12">
     <div class="card-panel">
-      <div class="card-panel-header">Audit Trail</div>
-      <div class="p-3" style="max-height:640px;overflow-y:auto;">
-        <?php if (empty($logs)): ?>
-          <div class="text-muted text-center py-4">No history recorded.</div>
-        <?php else: ?>
-          <div class="timeline">
-            <?php foreach ($logs as $log): ?>
-              <div class="timeline-item">
-                <span class="timeline-dot"><i class="bi <?= $logIcons[$log['action']] ?? 'bi-dot' ?>"></i></span>
-                <div class="timeline-title"><?= e($log['action']) ?></div>
-                <div class="timeline-detail"><?= e($log['actor_name']) ?> <span class="text-muted">(<?= e(role_label($log['actor_role'])) ?>)</span></div>
-                <?php if ($log['details']): ?><div class="timeline-detail text-muted"><?= e($log['details']) ?></div><?php endif; ?>
-                <div class="timeline-meta"><?= date('M d, Y g:i:s A', strtotime($log['created_at'])) ?></div>
-              </div>
-            <?php endforeach; ?>
+      <div class="card-panel-header dt-head">
+        <div>
+          <span><i class="bi bi-clock-history me-2"></i>Document Timeline</span>
+          <div class="dt-head__sub">
+            <?= $hopCount ?> office<?= $hopCount === 1 ? '' : 's' ?>
+            · <?= $activeHops ?> active
           </div>
-        <?php endif; ?>
+        </div>
+        <div class="dt-head__tools">
+          <span class="dt-elapsed">
+            <i class="bi bi-stopwatch me-1"></i>Elapsed <b><?= e($totalElapsed) ?></b>
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btnExpandAllHops"
+                  data-expanded="0">Expand All</button>
+        </div>
+      </div>
+
+      <div class="p-3">
+        <ol class="dt-list">
+          <?php foreach ($hops as $hop): ?>
+            <?php
+              $stateClass = 'dt-state--' . strtolower($hop['state']);
+              $hopIcon = $hop['route'] === null ? 'bi-file-earmark-plus'
+                       : ($hop['is_last'] ? 'bi-inbox' : 'bi-send');
+            ?>
+            <li class="dt-hop">
+              <span class="dt-hop__icon"><i class="bi <?= $hopIcon ?>"></i></span>
+
+              <div class="dt-card">
+                <div class="dt-card__head">
+                  <div class="dt-office">
+                    <?= e(strtoupper($hop['office'])) ?>
+                    <?php if ($hop['state'] === 'Active'): ?><span class="dt-live"></span><?php endif; ?>
+                  </div>
+                  <span class="dt-state <?= $stateClass ?>"><?= e($hop['state']) ?></span>
+                </div>
+
+                <div class="dt-meta">
+                  <span><i class="bi bi-calendar3"></i> <?= date('M d, Y g:i A', strtotime($hop['started'])) ?></span>
+                  <span><i class="bi bi-clock"></i> <?= e($hop['elapsed']) ?></span>
+                  <span><i class="bi bi-person"></i> <?= e($hop['holder']) ?></span>
+                </div>
+
+                <?php if ($hop['transaction']): ?>
+                  <div class="dt-txn">
+                    <span class="dt-txn__label">Transaction</span>
+                    <b><?= e($hop['transaction']) ?></b>
+                    <span class="dt-pill"><?= e($doc['priority']) ?></span>
+                  </div>
+                  <?php if ($hop['remarks']): ?>
+                    <div class="dt-remark">&ldquo;<?= e($hop['remarks']) ?>&rdquo;</div>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <div class="dt-txn">
+                    <span class="dt-txn__label">Raised here</span>
+                    <b><?= e($doc['doc_type']) ?></b>
+                    <span class="dt-pill"><?= e($doc['priority']) ?></span>
+                  </div>
+                <?php endif; ?>
+
+                <?php if ($hop['awaiting']): ?>
+                  <div class="dt-flag dt-flag--wait">
+                    <i class="bi bi-hourglass-split me-1"></i>Awaiting acknowledgement from this office
+                  </div>
+                <?php endif; ?>
+
+                <?php if ($hop['state'] === 'Active' && $dueChip): ?>
+                  <div class="dt-flag <?= $dueChip['overdue'] ? 'dt-flag--late' : 'dt-flag--due' ?>">
+                    <i class="bi bi-alarm me-1"></i>Due <?= e($dueChip['label']) ?>
+                    <span class="dt-flag__note"><?= e($dueChip['note']) ?></span>
+                  </div>
+                <?php endif; ?>
+
+                <?php if (!empty($hop['actions'])): ?>
+                  <button type="button" class="dt-toggle" aria-expanded="false">
+                    <i class="bi bi-list-ul me-1"></i>Internal actions
+                    <span class="dt-count"><?= count($hop['actions']) ?></span>
+                    <i class="bi bi-chevron-down dt-toggle__chev"></i>
+                  </button>
+
+                  <div class="dt-acts" hidden>
+                    <?php foreach ($hop['actions'] as $log): ?>
+                      <div class="dt-act">
+                        <span class="dt-act__icon dt-act__icon--<?= $logTone[$log['action']] ?? 'neutral' ?>">
+                          <i class="bi <?= $logIcons[$log['action']] ?? 'bi-dot' ?>"></i>
+                        </span>
+                        <div class="dt-act__body">
+                          <div class="dt-act__title"><?= e($log['action']) ?></div>
+                          <div class="dt-act__by">
+                            By: <?= e($log['actor_name']) ?>
+                            <span class="text-muted">(<?= e(role_label($log['actor_role'])) ?>)</span>
+                          </div>
+                          <?php if ($log['details']): ?>
+                            <div class="dt-act__note">&ldquo;<?= e($log['details']) ?>&rdquo;</div>
+                          <?php endif; ?>
+                        </div>
+                        <div class="dt-act__time"><?= date('M d, g:i A', strtotime($log['created_at'])) ?></div>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endif; ?>
+              </div>
+            </li>
+          <?php endforeach; ?>
+        </ol>
       </div>
     </div>
   </div>

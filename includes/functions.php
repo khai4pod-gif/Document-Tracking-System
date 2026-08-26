@@ -179,6 +179,31 @@ function redirect(string $path): void
 // ---------------------------------------------------------------------
 
 /**
+ * Human-readable elapsed time for the document timeline, e.g. "14d 5h 37m",
+ * "5h 37m", "37m". Minutes are always shown so a fresh hop never reads as
+ * an empty span.
+ */
+function format_duration(int $seconds): string
+{
+    $seconds = max(0, $seconds);
+
+    $days    = intdiv($seconds, 86400);
+    $hours   = intdiv($seconds % 86400, 3600);
+    $minutes = intdiv($seconds % 3600, 60);
+
+    $parts = [];
+    if ($days > 0) {
+        $parts[] = $days . 'd';
+    }
+    if ($days > 0 || $hours > 0) {
+        $parts[] = $hours . 'h';
+    }
+    $parts[] = $minutes . 'm';
+
+    return implode(' ', $parts);
+}
+
+/**
  * The tracking-number prefix for a department: its code, reduced to the
  * characters that are safe inside an identifier.
  *

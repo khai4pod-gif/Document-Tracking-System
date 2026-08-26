@@ -127,6 +127,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ---- Document timeline: per-office internal actions ----
+  const hopToggles = Array.from(document.querySelectorAll('.dt-toggle'));
+
+  function setHopOpen(toggle, open) {
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const panel = toggle.nextElementSibling;
+    if (panel) panel.hidden = !open;
+  }
+
+  hopToggles.forEach((toggle) => {
+    toggle.addEventListener('click', () => {
+      setHopOpen(toggle, toggle.getAttribute('aria-expanded') !== 'true');
+    });
+  });
+
+  const btnExpandAll = document.getElementById('btnExpandAllHops');
+  if (btnExpandAll && hopToggles.length) {
+    btnExpandAll.addEventListener('click', () => {
+      const expand = btnExpandAll.dataset.expanded !== '1';
+      hopToggles.forEach((toggle) => setHopOpen(toggle, expand));
+      btnExpandAll.dataset.expanded = expand ? '1' : '0';
+      btnExpandAll.textContent = expand ? 'Collapse All' : 'Expand All';
+    });
+  }
+
   document.querySelectorAll('.btn-delete-link').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const confirmed = await confirmAction('Remove this link?', 'The linked file itself is not deleted.', 'Yes, remove it');
