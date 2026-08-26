@@ -42,40 +42,40 @@ include __DIR__ . '/includes/header.php';
 <!-- KPI Cards -->
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php" title="View all documents">
       <div class="kpi-icon" style="background:#e9eef6;color:var(--accent);"><i class="bi bi-files"></i></div>
       <div>
         <div class="kpi-value"><?= number_format($stats['total']) ?></div>
         <div class="kpi-label"><?= $seesAll ? 'Total Documents' : 'My Documents' ?></div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php?status=Pending+Routing" title="View documents pending routing">
       <div class="kpi-icon" style="background:#f6e8cf;color:var(--accent-2);"><i class="bi bi-signpost-split"></i></div>
       <div>
         <div class="kpi-value"><?= number_format($stats['pending_routing']) ?></div>
         <div class="kpi-label">Pending Routing</div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php?status=Completed" title="View completed documents">
       <div class="kpi-icon" style="background:#e6f7ef;color:var(--success);"><i class="bi bi-check-circle"></i></div>
       <div>
         <div class="kpi-value"><?= number_format($stats['completed']) ?></div>
         <div class="kpi-label">Completed</div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php?status=Overdue" title="View overdue documents">
       <div class="kpi-icon" style="background:#fdeceb;color:var(--danger);"><i class="bi bi-exclamation-triangle"></i></div>
       <div>
         <div class="kpi-value"><?= number_format($stats['overdue']) ?></div>
         <div class="kpi-label">Overdue</div>
       </div>
-    </div>
+    </a>
   </div>
 </div>
 

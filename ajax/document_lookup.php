@@ -20,6 +20,8 @@ if ($query === '') {
 }
 
 $pdo = Database::getConnection();
+$documentModel = new Document($pdo);
+$user = current_user();
 
 // 1) Exact tracking number match (the normal case for a barcode scan).
 $exact = $pdo->prepare(
@@ -30,6 +32,17 @@ $exact->execute(['q' => $query]);
 $exactRow = $exact->fetch();
 
 if ($exactRow) {
+    // Scanning a slip for another office's document should say so plainly
+    // rather than open a page that immediately refuses — the physical slip
+    // is in the reader's hands, so its existence is not the secret.
+    $doc = $documentModel->find((int)$exactRow['id']);
+    if (!$documentModel->isAccessibleTo($doc, $user)) {
+        json_response([
+            'success' => false,
+            'message' => 'That document belongs to another office and is not available to you.',
+        ], 403);
+    }
+
     json_response([
         'success'  => true,
         'multiple' => false,
@@ -38,14 +51,19 @@ if ($exactRow) {
     ]);
 }
 
-// 2) Partial match on tracking number or title.
-$partial = $pdo->prepare(
-    "SELECT id, tracking_number, title, status FROM documents
-     WHERE is_archived = 0 AND (tracking_number LIKE :q1 OR title LIKE :q2)
-     ORDER BY created_at DESC LIMIT 10"
-);
-$partial->execute(['q1' => '%' . $query . '%', 'q2' => '%' . $query . '%']);
-$rows = $partial->fetchAll();
+// 2) Partial match, scoped exactly like the documents list. Searching
+//    without that scope let any signed-in account enumerate every title and
+//    tracking number in the agency by typing a single letter, even though
+//    opening the results was already blocked.
+$filters = ['archived' => false, 'search' => $query];
+if (!in_array($user['role'], ['admin', 'logistics', 'approver'], true)) {
+    $filters['scope'] = [
+        'department_id' => $user['department_id'],
+        'user_id'       => (int)$user['id'],
+    ];
+}
+
+$rows = array_slice($documentModel->listForTable($filters), 0, 10);
 
 if (empty($rows)) {
     json_response(['success' => false, 'message' => 'No document found matching "' . $query . '".'], 404);

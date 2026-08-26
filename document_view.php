@@ -381,9 +381,12 @@ include __DIR__ . '/includes/header.php';
 
   .print-slip__top { display: flex; gap: 18px; margin-bottom: 18px; }
   .print-slip__qr {
-    width: 150px; flex-shrink: 0; border: 1px solid #ccc; border-radius: 6px;
-    padding: 10px; text-align: center;
+    /* Wide enough for the 168px code plus a white quiet zone — a QR needs
+       clear margin on all four sides or readers skip it. */
+    width: 200px; flex-shrink: 0; border: 1px solid #ccc; border-radius: 6px;
+    padding: 14px; text-align: center; background: #fff;
   }
+  .print-slip__qr img, .print-slip__qr canvas { display: block; margin: 0 auto; }
   .print-slip__qr-caption { font-size: 8px; letter-spacing: .03em; margin-top: 6px; word-break: break-all; }
 
   .print-slip__meta { flex: 1; border-collapse: collapse; font-size: 11px; }
@@ -857,10 +860,14 @@ document.addEventListener("DOMContentLoaded", function () {
     height: 128,
     correctLevel: QRCode.CorrectLevel.M,
   });
+  // Printed at 96dpi this is roughly 44mm square, giving each module about
+  // 1.8mm — enough for a laptop webcam to resolve. At the previous 120px
+  // the modules landed near 1.2mm and blurred together when the slip was
+  // held far enough back to fit inside the scan box.
   new QRCode(document.getElementById("printQRCode"), {
     text: ' . json_encode($doc['tracking_number']) . ',
-    width: 120,
-    height: 120,
+    width: 168,
+    height: 168,
     correctLevel: QRCode.CorrectLevel.M,
   });
 });

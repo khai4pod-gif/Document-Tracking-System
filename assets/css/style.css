@@ -136,6 +136,15 @@ body{
   background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;
   display:flex;align-items:center;gap:16px;height:100%;
 }
+/* KPI tiles that link through to a filtered document list. */
+a.kpi-card{text-decoration:none;color:inherit;transition:border-color .15s ease,box-shadow .15s ease;}
+a.kpi-card:hover{border-color:var(--accent);box-shadow:0 2px 10px rgba(47,128,237,.12);}
+a.kpi-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+a.kpi-card .kpi-label{text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s ease;}
+a.kpi-card:hover .kpi-label{text-decoration-color:currentColor;}
+@media (prefers-reduced-motion: reduce){
+  a.kpi-card,a.kpi-card .kpi-label{transition:none;}
+}
 .kpi-icon{
   width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;
   font-size:1.35rem;flex-shrink:0;
@@ -219,9 +228,14 @@ body{
 #scannerViewport{width:100%;height:100%;position:absolute;inset:0;}
 #scannerViewport video{width:100% !important;height:100% !important;object-fit:cover;}
 .scanner-overlay{
-  position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+  /* Fills the frame and centres itself, rather than depending on being the
+     frame's only in-flow child — html5-qrcode injects its own markup and
+     can shift a relatively-positioned sibling off centre. */
+  position:absolute;inset:0;z-index:2;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:14px;padding:30px;text-align:center;
 }
+.scanner-error-hint{color:#9fb0c4;font-size:.8rem;max-width:420px;line-height:1.45;}
 .scanner-icon{
   width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.08);
   display:flex;align-items:center;justify-content:center;color:#7fb2ff;font-size:1.6rem;

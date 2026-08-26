@@ -22,6 +22,16 @@ $scopeCreatorId = $seesAll ? null : (int)current_user()['id'];
 $stats = $documentModel->getStats($scopeCreatorId);
 $statusBreakdown = $documentModel->getStatusBreakdown($scopeCreatorId);
 $statusTotal = array_sum($statusBreakdown);
+// Office-wide analytics are scoped to the signed-in user's own office;
+// accounts with no department see every office.
+$officeDeptId = !empty(current_user()['department_id']) ? (int)current_user()['department_id'] : null;
+$officeName = 'All Offices';
+if ($officeDeptId !== null) {
+    $stmt = $pdo->prepare("SELECT name FROM departments WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $officeDeptId]);
+    $officeName = (string)($stmt->fetchColumn() ?: 'My Office');
+}
+
 $statusColors = [
     'Draft'            => '#8a93a3',
     'Pending Routing'  => '#f2994a',
@@ -42,22 +52,22 @@ include __DIR__ . '/includes/header.php';
 
 <div class="row g-3 mb-3">
   <div class="col-sm-4">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php" title="View all documents">
       <div class="kpi-icon" style="background:#e8f0fe;color:var(--accent);"><i class="bi bi-files"></i></div>
       <div><div class="kpi-value"><?= number_format($stats['total']) ?></div><div class="kpi-label"><?= $seesAll ? 'Total Documents' : 'My Documents' ?></div></div>
-    </div>
+    </a>
   </div>
   <div class="col-sm-4">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php?status=Pending+Routing" title="View documents pending routing">
       <div class="kpi-icon" style="background:#fff4e5;color:var(--accent-2);"><i class="bi bi-signpost-split"></i></div>
       <div><div class="kpi-value"><?= number_format($stats['pending_routing']) ?></div><div class="kpi-label">Pending Routing</div></div>
-    </div>
+    </a>
   </div>
   <div class="col-sm-4">
-    <div class="kpi-card">
+    <a class="kpi-card" href="documents.php?status=Overdue" title="View overdue documents">
       <div class="kpi-icon" style="background:#fdeceb;color:var(--danger);"><i class="bi bi-exclamation-triangle"></i></div>
       <div><div class="kpi-value"><?= number_format($stats['overdue']) ?></div><div class="kpi-label">Overdue</div></div>
-    </div>
+    </a>
   </div>
 </div>
 
@@ -68,12 +78,19 @@ include __DIR__ . '/includes/header.php';
       <div class="p-3">
 
         <style>
-          /* Compact, transparent scanner frame — overrides assets/css/style.css
-             defaults for #scannerFrame just for this page. */
+          /* Transparent scanner frame spanning the full card width, so it
+             lines up with the search field beneath it instead of floating
+             as a narrow square. Overrides assets/css/style.css defaults for
+             #scannerFrame just for this page. */
           #scannerFrame.scanner-frame {
-            max-width: 320px;
-            aspect-ratio: 1 / 1;
-            margin: 0 auto;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            /* Camera preview is landscape, so a landscape frame wastes less
+               room than the old square and crops less of the picture. */
+            aspect-ratio: 16 / 9;
+            min-height: 220px;
+            max-height: 420px;
             background: transparent;
           }
 
@@ -105,12 +122,14 @@ include __DIR__ . '/includes/header.php';
           <div id="scannerOverlayError" class="scanner-overlay d-none">
             <div class="scanner-icon"><i class="bi bi-camera-video-off"></i></div>
             <div class="scanner-error-text" id="scannerErrorText">Camera permission denied. Please allow camera access.</div>
+            <div class="scanner-error-hint d-none" id="scannerErrorHint"></div>
             <button type="button" class="btn btn-primary" id="btnRetryScan">Try Again</button>
           </div>
         </div>
 
         <div class="text-muted small mt-2">
-          Point your camera at a document's printed barcode. Works best in Chrome/Edge.
+          Point your camera at the QR code on a printed routing slip, filling most of the
+          frame and holding it steady. Works best in Chrome/Edge.
         </div>
 
         <hr class="my-3">
@@ -144,7 +163,9 @@ include __DIR__ . '/includes/header.php';
         <?php if ($statusTotal === 0): ?>
           <div class="text-center text-muted py-4">No documents yet.</div>
         <?php else: ?>
-          <canvas id="statusReportChart" height="180"></canvas>
+          <div style="position:relative;height:190px;">
+            <canvas id="statusReportChart"></canvas>
+          </div>
           <div class="d-flex flex-column gap-1 mt-3">
             <?php foreach ($statusBreakdown as $status => $count): ?>
               <div class="d-flex justify-content-between align-items-center small">
@@ -178,7 +199,7 @@ include __DIR__ . '/includes/header.php';
       </div>
       <div class="p-3">
         <div class="row g-3">
-          <div class="col-md-6 col-xl-4">
+          <div class="col-md-6 col-xl-3">
             <div class="perf-card">
               <div class="perf-card-body">
                 <div class="perf-card-title"><i class="bi bi-file-earmark-text" style="color:var(--accent);"></i> Documents Assigned</div>
@@ -191,7 +212,7 @@ include __DIR__ . '/includes/header.php';
               <div class="perf-accent" style="background:var(--accent);"></div>
             </div>
           </div>
-          <div class="col-md-6 col-xl-4">
+          <div class="col-md-6 col-xl-3">
             <div class="perf-card">
               <div class="perf-card-body">
                 <div class="perf-card-title"><i class="bi bi-hourglass-split" style="color:var(--accent-2);"></i> Active Documents (Pending)</div>
@@ -206,7 +227,7 @@ include __DIR__ . '/includes/header.php';
               <div class="perf-accent" style="background:var(--accent-2);"></div>
             </div>
           </div>
-          <div class="col-md-6 col-xl-4">
+          <div class="col-md-6 col-xl-3">
             <div class="perf-card">
               <div class="perf-card-body">
                 <div class="perf-card-title"><i class="bi bi-check-circle" style="color:var(--success);"></i> Resolved Documents</div>
@@ -220,20 +241,150 @@ include __DIR__ . '/includes/header.php';
               <div class="perf-accent" style="background:var(--success);"></div>
             </div>
           </div>
-        </div>
 
-        <div class="row g-3 mt-1">
-          <div class="col-md-6 col-lg-4 mx-auto">
+          <div class="col-md-6 col-xl-3">
             <div class="perf-card">
               <div class="perf-card-body text-center">
                 <div class="perf-card-title justify-content-center"><i class="bi bi-pie-chart" style="color:var(--success);"></i> Compliance Rate</div>
-                <div class="text-muted small mb-3">Compliant ÷ (Compliant + Non-Compliant) — exempt excluded</div>
+                <div class="text-muted small mb-3">Compliant ÷ (Compliant + Non-Compliant)<br>exempt excluded</div>
                 <div class="perf-gauge">
                   <canvas id="complianceGauge"></canvas>
                   <div class="perf-gauge-label">
                     <span class="pct" id="perfCompliancePct">—</span>
                     <span class="tag" id="perfComplianceTag"></span>
                   </div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--success);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Office Document Tracking ===================== -->
+<div class="row g-3 mt-0">
+  <div class="col-12">
+    <div class="card-panel">
+      <div class="card-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <div>Office Document Tracking — <?= e(strtoupper($officeName)) ?></div>
+          <div class="text-muted small fw-normal" id="officeSubtitle">Today (<?= date('M j, Y') ?>)</div>
+        </div>
+        <div class="perf-tabs" id="officeTabs">
+          <button type="button" class="perf-tab" data-period="as_of_today">As of Today</button>
+          <button type="button" class="perf-tab active" data-period="today">Today</button>
+          <button type="button" class="perf-tab" data-period="week">This Week</button>
+          <button type="button" class="perf-tab" data-period="month">Month</button>
+          <button type="button" class="perf-tab" data-period="quarter">Quarter</button>
+          <button type="button" class="perf-tab" data-period="year">Year</button>
+        </div>
+      </div>
+
+      <div class="p-3">
+        <div class="row g-3">
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-file-earmark-text" style="color:var(--accent);"></i> Total Documents</div>
+                <div class="perf-value" id="offTotal">0</div>
+                <div class="perf-sub-row">
+                  <div class="perf-sub">Created Internally<b id="offInternal" style="color:var(--success);">0</b></div>
+                  <div class="perf-sub">Routed In<b id="offRoutedIn" style="color:var(--accent);">0</b></div>
+                  <div class="perf-sub">No Deadline<b id="offTotalExempt">0</b></div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--accent);"></div>
+            </div>
+          </div>
+
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-pause-circle" style="color:#8557d3;"></i> Deferred Documents</div>
+                <div class="perf-value" id="offDeferred">0</div>
+                <div class="text-muted small">Archived without being completed</div>
+              </div>
+              <div class="perf-accent" style="background:#8557d3;"></div>
+            </div>
+          </div>
+
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-inbox" style="color:var(--accent);"></i> Office for Receipt</div>
+                <div class="perf-value" id="offForReceipt">0</div>
+                <div class="text-muted small">Routed here, not yet acknowledged</div>
+              </div>
+              <div class="perf-accent" style="background:var(--accent);"></div>
+            </div>
+          </div>
+
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-check-circle" style="color:var(--success);"></i> Resolved Documents</div>
+                <div class="perf-value" id="offResolved">0</div>
+                <div class="perf-sub-row">
+                  <div class="perf-sub">Compliant<b id="offCompliant" style="color:var(--success);">0</b></div>
+                  <div class="perf-sub">Non-Compliant<b id="offNonCompliant" style="color:var(--danger);">0</b></div>
+                  <div class="perf-sub">Exempt<b id="offResolvedExempt">0</b></div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--success);"></div>
+            </div>
+          </div>
+
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-hourglass-split" style="color:var(--accent-2);"></i> Active Documents (Pending)</div>
+                <div class="perf-value" id="offActive">0</div>
+                <div class="perf-sub-row">
+                  <div class="perf-sub">Backlog<b id="offBacklog" style="color:var(--danger);">0</b></div>
+                  <div class="perf-sub">Due Today<b id="offDueToday">0</b></div>
+                  <div class="perf-sub">Due in 3 Days<b id="offDue3Days">0</b></div>
+                  <div class="perf-sub">No Deadline<b id="offNoDeadline">0</b></div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--accent-2);"></div>
+            </div>
+          </div>
+
+          <div class="col-md-6 col-xl-4">
+            <div class="perf-card">
+              <div class="perf-card-body text-center">
+                <div class="perf-card-title justify-content-center"><i class="bi bi-pie-chart" style="color:var(--success);"></i> Overall Compliance Rate</div>
+                <div class="text-muted small mb-3">
+                  Compliant ÷ (Compliant + Non-Compliant) ·
+                  <span id="offExemptNote">exempt excluded</span>
+                </div>
+                <div class="perf-gauge">
+                  <canvas id="officeComplianceGauge"></canvas>
+                  <div class="perf-gauge-label">
+                    <span class="pct" id="offCompliancePct">—</span>
+                    <span class="tag" id="offComplianceTag"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="perf-accent" style="background:var(--success);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-12">
+            <div class="perf-card">
+              <div class="perf-card-body">
+                <div class="perf-card-title"><i class="bi bi-graph-up" style="color:var(--success);"></i> Compliance Rate over Time</div>
+                <div class="text-muted small mb-2">By month completed · last 6 months</div>
+                <div id="offTrendEmpty" class="text-center text-muted py-4 d-none">
+                  No completed documents with a deadline yet.
+                </div>
+                <div id="offTrendWrap" style="position:relative;height:260px;">
+                  <canvas id="officeComplianceTrend"></canvas>
                 </div>
               </div>
               <div class="perf-accent" style="background:var(--success);"></div>

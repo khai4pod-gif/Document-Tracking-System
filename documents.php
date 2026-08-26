@@ -9,6 +9,21 @@ require_once __DIR__ . '/config/config.php';
 require_login();
 
 $showArchived = isset($_GET['archived']) && $_GET['archived'] === '1';
+
+// Filters can arrive in the URL so the dashboard tiles can link straight to a
+// filtered list. Validated against the same options the dropdowns offer, so a
+// hand-edited query string can't put the page into a state the UI can't show.
+$statusOptions   = ['Draft', 'Pending Routing', 'In Transit', 'Received', 'Completed', Document::DERIVED_OVERDUE];
+$priorityOptions = ['Low', 'Normal', 'High', 'Urgent'];
+
+$filterStatus   = (string)($_GET['status'] ?? '');
+$filterPriority = (string)($_GET['priority'] ?? '');
+if (!in_array($filterStatus, $statusOptions, true)) {
+    $filterStatus = '';
+}
+if (!in_array($filterPriority, $priorityOptions, true)) {
+    $filterPriority = '';
+}
 $canRoute = user_can_route(current_user(), Database::getConnection());
 
 $pageTitle = $showArchived ? 'Archived Documents' : 'Documents';
@@ -33,20 +48,22 @@ include __DIR__ . '/includes/header.php';
     <span class="me-auto">Document Records</span>
     <select class="form-select form-select-sm" style="width:auto;" id="filterStatus">
       <option value="">All Statuses</option>
-      <option>Draft</option>
-      <option>Pending Routing</option>
-      <option>In Transit</option>
-      <option>Received</option>
-      <option>Completed</option>
-      <option>Overdue</option>
+      <?php foreach ($statusOptions as $__opt): ?>
+        <option<?= $filterStatus === $__opt ? ' selected' : '' ?>><?= e($__opt) ?></option>
+      <?php endforeach; ?>
     </select>
     <select class="form-select form-select-sm" style="width:auto;" id="filterPriority">
       <option value="">All Priorities</option>
-      <option>Low</option>
-      <option>Normal</option>
-      <option>High</option>
-      <option>Urgent</option>
+      <?php foreach ($priorityOptions as $__opt): ?>
+        <option<?= $filterPriority === $__opt ? ' selected' : '' ?>><?= e($__opt) ?></option>
+      <?php endforeach; ?>
     </select>
+    <?php if ($filterStatus !== '' || $filterPriority !== ''): ?>
+      <a href="documents.php<?= $showArchived ? '?archived=1' : '' ?>"
+         class="btn btn-sm btn-outline-secondary" title="Clear filters">
+        <i class="bi bi-x-lg"></i>
+      </a>
+    <?php endif; ?>
   </div>
   <div class="p-3">
     <div class="table-responsive">

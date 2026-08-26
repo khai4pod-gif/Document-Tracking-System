@@ -16,16 +16,23 @@ const APPROVAL_BADGE = {
 // Index of the CREATED column in the table definition below.
 const CREATED_COL = 7;
 
+/** The list endpoint URL for the filters currently selected. */
+function documentsListUrl() {
+  return 'ajax/documents_list.php?archived=' + (SHOW_ARCHIVED ? '1' : '0')
+    + '&status=' + encodeURIComponent($('#filterStatus').val() || '')
+    + '&priority=' + encodeURIComponent($('#filterPriority').val() || '');
+}
+
 let documentModal, documentsTable;
 
 document.addEventListener('DOMContentLoaded', () => {
   documentModal = new bootstrap.Modal(document.getElementById('documentModal'));
 
   documentsTable = $('#documentsTable').DataTable({
-    ajax: {
-      url: 'ajax/documents_list.php?archived=' + (SHOW_ARCHIVED ? '1' : '0'),
-      dataSrc: 'data',
-    },
+    // Built from the dropdowns, which the page may have pre-selected from the
+    // query string — so a dashboard tile linking to ?status=Overdue lands on
+    // an already-filtered table.
+    ajax: { url: documentsListUrl(), dataSrc: 'data' },
     order: [[CREATED_COL, 'desc']],
     dom: "<'d-flex justify-content-between align-items-center mb-2'fB>rt<'d-flex justify-content-between align-items-center mt-2'ip>",
     buttons: ['csv', 'excel', 'print'],
@@ -89,10 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Filters
   $('#filterStatus, #filterPriority').on('change', function () {
-    const url = 'ajax/documents_list.php?archived=' + (SHOW_ARCHIVED ? '1' : '0')
-      + '&status=' + encodeURIComponent($('#filterStatus').val())
-      + '&priority=' + encodeURIComponent($('#filterPriority').val());
-    documentsTable.ajax.url(url).load();
+    documentsTable.ajax.url(documentsListUrl()).load();
   });
 
   // New Document button

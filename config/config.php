@@ -43,7 +43,31 @@ define('DB_CHARSET', 'utf8mb4');
 // ---------------------------------------------------------------------
 define('APP_NAME', 'Document Tracking & Disaster Relief Distribution System');
 define('APP_SHORT_NAME', 'Office of the Secretary - Document Tracking System');
-define('BASE_URL', '/');                       // relief-dts.test's DocumentRoot IS this project folder
+/**
+ * Where the app is mounted, worked out from the request rather than fixed.
+ *
+ * It is served two ways: as a vhost root (http://document-tracking-system.test/)
+ * and from a subfolder (http://localhost/Document-Tracking-System/). The
+ * subfolder form matters because browsers only grant camera access on a
+ * secure origin, and localhost counts as one while a plain-http .test host
+ * does not — so barcode scanning needs that URL until SSL is enabled.
+ *
+ * Only redirect() consumes this; every link, asset and fetch is relative.
+ */
+$__docRoot = str_replace('\\', '/', rtrim((string)($_SERVER['DOCUMENT_ROOT'] ?? ''), "/\\"));
+$__appRoot = str_replace('\\', '/', dirname(__DIR__));
+$__baseUrl = '/';
+
+// Windows paths differ in case between Apache and PHP, so compare loosely.
+if ($__docRoot !== '' && strncasecmp($__appRoot, $__docRoot, strlen($__docRoot)) === 0) {
+    $__suffix = trim(substr($__appRoot, strlen($__docRoot)), '/');
+    if ($__suffix !== '') {
+        $__baseUrl = '/' . $__suffix . '/';
+    }
+}
+
+define('BASE_URL', $__baseUrl);
+unset($__docRoot, $__appRoot, $__baseUrl, $__suffix);
 define('UPLOAD_DIR', __DIR__ . '/../uploads/documents/');
 define('MANIFEST_UPLOAD_DIR', __DIR__ . '/../uploads/manifests/');
 define('MAX_UPLOAD_BYTES', 10 * 1024 * 1024);  // 10 MB

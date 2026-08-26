@@ -16,6 +16,16 @@ class Document
         $this->pdo = $pdo;
     }
 
+    /**
+     * 'Overdue' is a derived status, not a stored one: no code path writes it
+     * to documents.status. It means a dated, unfinished document whose due
+     * date has passed. Kept here as one definition so the dashboard tiles and
+     * the documents list can never disagree about what counts as overdue.
+     */
+    public const DERIVED_OVERDUE = 'Overdue';
+    private const OVERDUE_SQL =
+        "(d.due_date IS NOT NULL AND d.due_date < CURDATE() AND d.status <> 'Completed')";
+
     // -------------------------------------------------------------
     // DASHBOARD / KPI QUERIES
     // -------------------------------------------------------------
@@ -134,16 +144,51 @@ class Document
      * date always matches — undated work doesn't belong to any period, so
      * it stays visible no matter which one is selected.
      */
-    private function dueDatePeriodClause(string $period): string
+    private function dueDatePeriodClause(string $period, string $alias = ''): string
     {
+        $col = ($alias !== '' ? $alias . '.' : '') . 'due_date';
+
         return match ($period) {
-            'as_of_today' => "(due_date IS NULL OR due_date <= CURDATE())",
-            'week'        => "(due_date IS NULL OR YEARWEEK(due_date, 3) = YEARWEEK(CURDATE(), 3))",
-            'month'       => "(due_date IS NULL OR (YEAR(due_date) = YEAR(CURDATE()) AND MONTH(due_date) = MONTH(CURDATE())))",
-            'quarter'     => "(due_date IS NULL OR (YEAR(due_date) = YEAR(CURDATE()) AND QUARTER(due_date) = QUARTER(CURDATE())))",
-            'year'        => "(due_date IS NULL OR YEAR(due_date) = YEAR(CURDATE()))",
-            default       => "(due_date IS NULL OR due_date = CURDATE())", // 'today'
+            'as_of_today' => "({$col} IS NULL OR {$col} <= CURDATE())",
+            'week'        => "({$col} IS NULL OR YEARWEEK({$col}, 3) = YEARWEEK(CURDATE(), 3))",
+            'month'       => "({$col} IS NULL OR (YEAR({$col}) = YEAR(CURDATE()) AND MONTH({$col}) = MONTH(CURDATE())))",
+            'quarter'     => "({$col} IS NULL OR (YEAR({$col}) = YEAR(CURDATE()) AND QUARTER({$col}) = QUARTER(CURDATE())))",
+            'year'        => "({$col} IS NULL OR YEAR({$col}) = YEAR(CURDATE()))",
+            default       => "({$col} IS NULL OR {$col} = CURDATE())", // 'today'
         };
+    }
+
+    /**
+     * Splits a set of completed documents into compliant / non-compliant /
+     * exempt against their due dates. Shared by the individual and office
+     * summaries so both judge compliance the same way.
+     *
+     * Each row needs due_date, updated_at and completed_at. A document with
+     * no due date is exempt — there is nothing to be late against.
+     *
+     * @return array{compliant:int, non_compliant:int, exempt:int}
+     */
+    private function tallyCompliance(array $rows): array
+    {
+        $compliant = 0;
+        $nonCompliant = 0;
+        $exempt = 0;
+
+        foreach ($rows as $row) {
+            if ($row['due_date'] === null) {
+                $exempt++;
+                continue;
+            }
+            $completedAt   = $row['completed_at'] ?? $row['updated_at'];
+            $completedDate = (new DateTimeImmutable($completedAt))->setTime(0, 0);
+            if ($completedDate <= new DateTimeImmutable($row['due_date'])) {
+                $compliant++;
+            } else {
+                $nonCompliant++;
+            }
+        }
+
+        return ['compliant' => $compliant, 'non_compliant' => $nonCompliant, 'exempt' => $exempt];
     }
 
     /**
@@ -220,24 +265,11 @@ class Document
         $resolvedStmt->execute(['user' => $userId]);
         $resolved = $resolvedStmt->fetchAll();
 
-        $compliant = 0;
-        $nonCompliant = 0;
-        $exempt = 0;
-
-        foreach ($resolved as $row) {
-            if ($row['due_date'] === null) {
-                $exempt++;
-                continue;
-            }
-            $completedAt = $row['completed_at'] ?? $row['updated_at'];
-            $completedDate = (new DateTimeImmutable($completedAt))->setTime(0, 0);
-            $dueDate = new DateTimeImmutable($row['due_date']);
-            if ($completedDate <= $dueDate) {
-                $compliant++;
-            } else {
-                $nonCompliant++;
-            }
-        }
+        // Shared with getOfficeSummary() so both panels judge lateness alike.
+        $tally = $this->tallyCompliance($resolved);
+        $compliant = $tally['compliant'];
+        $nonCompliant = $tally['non_compliant'];
+        $exempt = $tally['exempt'];
 
         $complianceDenominator = $compliant + $nonCompliant;
 
@@ -262,6 +294,205 @@ class Document
             ],
             'compliance_rate' => $complianceDenominator > 0 ? round($compliant / $complianceDenominator * 100, 1) : null,
         ];
+    }
+
+    /**
+     * Office-wide counterpart to getPerformanceSummary(): the same period
+     * slicing and the same compliance test, but scoped to a department
+     * rather than one person. Passing null covers every office.
+     *
+     * "Belongs to this office" means the document either originated here or
+     * was routed here at some point — that pair is exhaustive and disjoint,
+     * so created_internally + routed_in always equals total.
+     *
+     * Active and resolved counts follow the document's current holder, so a
+     * document that has moved on is counted by the office now holding it,
+     * not by every office it has passed through.
+     *
+     * Deferred is the nearest thing this system has to "cancelled": archived
+     * without ever reaching Completed.
+     *
+     * @return array{
+     *   total: array{total:int, created_internally:int, routed_in:int, exempt:int},
+     *   deferred: int,
+     *   for_receipt: int,
+     *   active: array{total:int, backlog:int, due_today:int, due_3days:int, no_deadline:int},
+     *   resolved: array{total:int, compliant:int, non_compliant:int, exempt:int},
+     *   compliance_rate: ?float,
+     * }
+     */
+    public function getOfficeSummary(?int $departmentId, string $period = 'today'): array
+    {
+        $periodDoc = $this->dueDatePeriodClause($period, 'd');
+        $scoped    = $departmentId !== null;
+
+        // ---- Total: originated here, or routed here at some point ----
+        $belongs = $scoped
+            ? "(d.origin_department_id = :dept
+                 OR EXISTS (SELECT 1 FROM document_routes r
+                             WHERE r.document_id = d.id AND r.to_department_id = :deptRoute))"
+            : '1 = 1';
+
+        $stmt = $this->pdo->prepare(
+            "SELECT d.origin_department_id, d.due_date
+               FROM documents d
+              WHERE d.is_archived = 0 AND {$belongs} AND {$periodDoc}"
+        );
+        $stmt->execute($scoped ? ['dept' => $departmentId, 'deptRoute' => $departmentId] : []);
+        $owned = $stmt->fetchAll();
+
+        $createdInternally = 0;
+        $totalExempt = 0;
+        foreach ($owned as $row) {
+            if (!$scoped || (int)$row['origin_department_id'] === $departmentId) {
+                $createdInternally++;
+            }
+            if ($row['due_date'] === null) {
+                $totalExempt++;
+            }
+        }
+
+        // ---- Deferred: archived without ever being completed ----
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM documents d
+              WHERE d.is_archived = 1 AND d.status <> 'Completed'
+                AND {$belongs} AND {$periodDoc}"
+        );
+        $stmt->execute($scoped ? ['dept' => $departmentId, 'deptRoute' => $departmentId] : []);
+        $deferred = (int)$stmt->fetchColumn();
+
+        // ---- Office for receipt: routed here, not yet acknowledged ----
+        $receiptWhere = $scoped ? 'r.to_department_id = :dept' : 'r.to_department_id IS NOT NULL';
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM document_routes r
+               JOIN documents d ON d.id = r.document_id
+              WHERE r.status = 'Pending' AND d.is_archived = 0
+                AND {$receiptWhere} AND {$periodDoc}"
+        );
+        $stmt->execute($scoped ? ['dept' => $departmentId] : []);
+        $forReceipt = (int)$stmt->fetchColumn();
+
+        // ---- Active: held by this office and still moving ----
+        $holderWhere = $scoped ? 'u.department_id = :dept' : '1 = 1';
+        $stmt = $this->pdo->prepare(
+            "SELECT d.status, d.due_date
+               FROM documents d
+               JOIN users u ON u.id = d.current_holder_id
+              WHERE d.is_archived = 0 AND d.status IN ('In Transit', 'Received')
+                AND {$holderWhere} AND {$periodDoc}"
+        );
+        $stmt->execute($scoped ? ['dept' => $departmentId] : []);
+        $active = $stmt->fetchAll();
+
+        $backlog = 0;
+        $dueToday = 0;
+        $due3Days = 0;
+        $noDeadline = 0;
+        $today   = new DateTimeImmutable('today');
+        $in3Days = $today->modify('+3 days');
+
+        foreach ($active as $row) {
+            if ($row['due_date'] === null) {
+                $noDeadline++;
+                continue;
+            }
+            $due = new DateTimeImmutable($row['due_date']);
+            if ($due < $today) {
+                $backlog++;
+            } elseif ($due == $today) {
+                $dueToday++;
+            } elseif ($due <= $in3Days) {
+                $due3Days++;
+            }
+        }
+
+        // ---- Resolved: completed and held by this office ----
+        $stmt = $this->pdo->prepare(
+            "SELECT d.due_date, d.updated_at,
+                    (SELECT MAX(l.created_at) FROM document_logs l
+                      WHERE l.document_id = d.id AND l.action = 'Completed') AS completed_at
+               FROM documents d
+               JOIN users u ON u.id = d.current_holder_id
+              WHERE d.is_archived = 0 AND d.status = 'Completed'
+                AND {$holderWhere} AND {$periodDoc}"
+        );
+        $stmt->execute($scoped ? ['dept' => $departmentId] : []);
+        $resolved = $stmt->fetchAll();
+
+        $tally = $this->tallyCompliance($resolved);
+        $denominator = $tally['compliant'] + $tally['non_compliant'];
+
+        return [
+            'total' => [
+                'total'              => count($owned),
+                'created_internally' => $createdInternally,
+                'routed_in'          => count($owned) - $createdInternally,
+                'exempt'             => $totalExempt,
+            ],
+            'deferred'    => $deferred,
+            'for_receipt' => $forReceipt,
+            'active' => [
+                'total'       => count($active),
+                'backlog'     => $backlog,
+                'due_today'   => $dueToday,
+                'due_3days'   => $due3Days,
+                'no_deadline' => $noDeadline,
+            ],
+            'resolved' => array_merge(['total' => count($resolved)], $tally),
+            'compliance_rate' => $denominator > 0
+                ? round($tally['compliant'] / $denominator * 100, 1)
+                : null,
+        ];
+    }
+
+    /**
+     * Month-by-month compliance rate for an office, for the trend chart.
+     * Documents are grouped by when they were completed, not when they were
+     * raised. Months with no completed, dated work yield a null rate so the
+     * line breaks rather than dropping to a misleading zero.
+     *
+     * @return array{labels: string[], rates: (float|null)[]}
+     */
+    public function getOfficeComplianceTrend(?int $departmentId, int $months = 6): array
+    {
+        $holderWhere = $departmentId !== null ? 'u.department_id = :dept' : '1 = 1';
+
+        $sql = "SELECT DATE_FORMAT(COALESCE(cl.completed_at, d.updated_at), '%Y-%m') AS ym,
+                       d.due_date, d.updated_at,
+                       cl.completed_at
+                  FROM documents d
+                  JOIN users u ON u.id = d.current_holder_id
+                  LEFT JOIN (
+                        SELECT document_id, MAX(created_at) AS completed_at
+                          FROM document_logs WHERE action = 'Completed' GROUP BY document_id
+                  ) cl ON cl.document_id = d.id
+                 WHERE d.is_archived = 0 AND d.status = 'Completed'
+                   AND {$holderWhere}
+                   AND COALESCE(cl.completed_at, d.updated_at) >= DATE_SUB(CURDATE(), INTERVAL :months MONTH)
+                 ORDER BY ym ASC";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':months', $months, PDO::PARAM_INT);
+        if ($departmentId !== null) {
+            $stmt->bindValue(':dept', $departmentId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $byMonth = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $byMonth[$row['ym']][] = $row;
+        }
+
+        $labels = [];
+        $rates  = [];
+        foreach ($byMonth as $ym => $rows) {
+            $tally = $this->tallyCompliance($rows);
+            $denominator = $tally['compliant'] + $tally['non_compliant'];
+            $labels[] = $ym;
+            $rates[]  = $denominator > 0 ? round($tally['compliant'] / $denominator * 100, 1) : null;
+        }
+
+        return ['labels' => $labels, 'rates' => $rates];
     }
 
     /** $creatorId narrows the list to that user's own documents; null lists all. */
@@ -322,16 +553,27 @@ class Document
         $params['archived'] = !empty($filters['archived']) ? 1 : 0;
 
         if (!empty($filters['status'])) {
-            $where[] = 'd.status = :status';
-            $params['status'] = $filters['status'];
+            if ($filters['status'] === self::DERIVED_OVERDUE) {
+                // Nothing ever writes 'Overdue' to documents.status — it is
+                // derived from the due date. Matching the literal value would
+                // return an empty list beneath a dashboard tile reporting a
+                // non-zero count, so use the same test the tile counts with.
+                $where[] = self::OVERDUE_SQL;
+            } else {
+                $where[] = 'd.status = :status';
+                $params['status'] = $filters['status'];
+            }
         }
         if (!empty($filters['priority'])) {
             $where[] = 'd.priority = :priority';
             $params['priority'] = $filters['priority'];
         }
         if (!empty($filters['search'])) {
-            $where[] = '(d.title LIKE :search OR d.tracking_number LIKE :search)';
-            $params['search'] = '%' . $filters['search'] . '%';
+            // Two placeholders, not one reused: prepare emulation is off, and
+            // a named parameter can only be bound once per statement.
+            $where[] = '(d.title LIKE :searchTitle OR d.tracking_number LIKE :searchTracking)';
+            $params['searchTitle']    = '%' . $filters['search'] . '%';
+            $params['searchTracking'] = '%' . $filters['search'] . '%';
         }
 
         // Restrict non-admin/logistics users to documents tied to their
