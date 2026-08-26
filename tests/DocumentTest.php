@@ -42,14 +42,25 @@ final class DocumentTest extends TestCase
         $this->assertSame('Pending', $row['approval_status']);
     }
 
-    public function testCreateGeneratesSequentialTrackingNumbers(): void
+    public function testCreateGeneratesSequentialTrackingNumbersPrefixedByDepartment(): void
     {
+        // baseDocData() defaults origin_department_id to deptA, whose code
+        // is RECORDS — tracking numbers are prefixed by that department's
+        // code, not a fixed "DOC" prefix.
         $year = date('Y');
         $first = $this->doc->create($this->baseDocData(), $this->admin);
         $second = $this->doc->create($this->baseDocData(), $this->admin);
 
-        $this->assertSame("DOC-{$year}-000001", $first['tracking_number']);
-        $this->assertSame("DOC-{$year}-000002", $second['tracking_number']);
+        $this->assertSame("RECORDS-{$year}-000001", $first['tracking_number']);
+        $this->assertSame("RECORDS-{$year}-000002", $second['tracking_number']);
+    }
+
+    public function testCreateFallsBackToDocPrefixWithNoDepartment(): void
+    {
+        $year = date('Y');
+        $result = $this->doc->create($this->baseDocData(['origin_department_id' => null]), $this->admin);
+
+        $this->assertSame("DOC-{$year}-000001", $result['tracking_number']);
     }
 
     public function testCreateWritesAnAuditLogEntry(): void
