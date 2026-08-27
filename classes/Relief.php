@@ -22,11 +22,23 @@ class Relief
 
     public function getStats(): array
     {
-        $inv = $this->pdo->query(
-            "SELECT COALESCE(SUM(quantity_available),0) AS avail,
-                    COALESCE(SUM(quantity_distributed),0) AS dist
-             FROM relief_inventory"
-        )->fetch();
+        $avail = $this->pdo->query(
+            "SELECT COALESCE(SUM(quantity_available),0) FROM relief_inventory"
+        )->fetchColumn();
+
+        // Summed from the recorded line items, not from relief_inventory's
+        // running quantity_distributed counter. The counter also carries any
+        // opening balance loaded with the stock, which has no distribution
+        // behind it — so the tile disagreed with the category chart beside it
+        // and with the goods breakdown report. Every figure on the dashboard
+        // now traces back to an actual distribution event, and cancelled
+        // events drop out of all of them alike.
+        $distributed = $this->pdo->query(
+            "SELECT COALESCE(SUM(di.quantity),0)
+               FROM distribution_items di
+               JOIN distributions d ON d.id = di.distribution_id
+              WHERE d.status <> 'Cancelled'"
+        )->fetchColumn();
 
         $centers = $this->pdo->query(
             "SELECT COUNT(*) AS cnt FROM evacuation_centers WHERE is_active = 1"
@@ -38,8 +50,8 @@ class Relief
         )->fetch();
 
         return [
-            'packs_available'   => (int)$inv['avail'],
-            'packs_distributed' => (int)$inv['dist'],
+            'packs_available'   => (int)$avail,
+            'packs_distributed' => (int)$distributed,
             'active_centers'    => (int)$centers['cnt'],
             'total_beneficiaries' => (int)$beneficiaries['total'],
         ];
@@ -336,13 +348,108 @@ class Relief
         }
     }
 
+    /**
+     * Changes a distribution's status, moving stock with it.
+     *
+     * Cancelling used to update the status row alone: the quantities deducted
+     * when the event was recorded stayed deducted, while every report dropped
+     * the cancelled event from its totals — so inventory and reporting
+     * disagreed permanently, and goods that were never released stayed
+     * unavailable. Cancelling now returns the stock, and reinstating a
+     * cancelled event takes it out again.
+     *
+     * Driven by the transition, not the target, so repeating a status is a
+     * no-op for stock rather than returning the same goods twice.
+     *
+     * @throws RuntimeException if reinstating would oversell current stock.
+     */
     public function updateDistributionStatus(int $id, string $status): bool
     {
         $valid = ['Draft', 'Pending Approval', 'Approved', 'Completed', 'Cancelled'];
         if (!in_array($status, $valid, true)) {
             return false;
         }
-        $stmt = $this->pdo->prepare("UPDATE distributions SET status = :status, updated_at = NOW() WHERE id = :id");
-        return $stmt->execute(['status' => $status, 'id' => $id]);
+
+        $this->pdo->beginTransaction();
+        try {
+            // Locked so two concurrent changes can't both decide stock moves.
+            $stmt = $this->pdo->prepare("SELECT status FROM distributions WHERE id = :id FOR UPDATE");
+            $stmt->execute(['id' => $id]);
+            $current = $stmt->fetchColumn();
+
+            if ($current === false) {
+                $this->pdo->rollBack();
+                return false;
+            }
+
+            $wasCancelled = ($current === 'Cancelled');
+            $nowCancelled = ($status === 'Cancelled');
+
+            if (!$wasCancelled && $nowCancelled) {
+                $this->moveDistributionStock($id, 'return');
+            } elseif ($wasCancelled && !$nowCancelled) {
+                $this->moveDistributionStock($id, 'issue');
+            }
+
+            $upd = $this->pdo->prepare(
+                "UPDATE distributions SET status = :status, updated_at = NOW() WHERE id = :id"
+            );
+            $upd->execute(['status' => $status, 'id' => $id]);
+
+            $this->pdo->commit();
+            return true;
+        } catch (Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Applies a distribution's line items to inventory in either direction.
+     * 'issue' deducts (the event is live), 'return' credits back (cancelled).
+     * Caller owns the transaction.
+     */
+    private function moveDistributionStock(int $distributionId, string $direction): void
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT di.inventory_id, di.quantity, ri.item_name, ri.quantity_available
+               FROM distribution_items di
+               JOIN relief_inventory ri ON ri.id = di.inventory_id
+              WHERE di.distribution_id = :id
+              FOR UPDATE"
+        );
+        $stmt->execute(['id' => $distributionId]);
+        $lines = $stmt->fetchAll();
+
+        if ($direction === 'issue') {
+            // Stock may have been released elsewhere while this sat cancelled.
+            foreach ($lines as $line) {
+                if ((int)$line['quantity_available'] < (int)$line['quantity']) {
+                    throw new RuntimeException(
+                        "Cannot reinstate this distribution — \"{$line['item_name']}\" needs "
+                        . "{$line['quantity']} but only {$line['quantity_available']} remain in stock."
+                    );
+                }
+            }
+        }
+
+        $sign = $direction === 'issue' ? '-' : '+';
+        $inverse = $direction === 'issue' ? '+' : '-';
+
+        $move = $this->pdo->prepare(
+            "UPDATE relief_inventory
+                SET quantity_available   = quantity_available {$sign} :qty,
+                    quantity_distributed = quantity_distributed {$inverse} :qty2,
+                    updated_at = NOW()
+              WHERE id = :id"
+        );
+
+        foreach ($lines as $line) {
+            $move->execute([
+                'qty'  => (int)$line['quantity'],
+                'qty2' => (int)$line['quantity'],
+                'id'   => (int)$line['inventory_id'],
+            ]);
+        }
     }
 }

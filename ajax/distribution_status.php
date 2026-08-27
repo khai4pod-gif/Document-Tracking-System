@@ -23,6 +23,19 @@ if ($id <= 0 || $status === '') {
 
 $pdo = Database::getConnection();
 $relief = new Relief($pdo);
-$ok = $relief->updateDistributionStatus($id, $status);
 
-json_response(['success' => $ok, 'message' => $ok ? 'Distribution status updated.' : 'Invalid status or distribution not found.']);
+try {
+    $ok = $relief->updateDistributionStatus($id, $status);
+} catch (RuntimeException $e) {
+    // Reinstating a cancelled distribution can fail if the stock it needs has
+    // since gone out on another event — that is a normal outcome, not a fault.
+    json_response(['success' => false, 'message' => $e->getMessage()], 422);
+} catch (Throwable $e) {
+    error_log('[DISTRIBUTION STATUS ERROR] ' . $e->getMessage());
+    json_response(['success' => false, 'message' => 'A system error occurred while updating the distribution.'], 500);
+}
+
+json_response([
+    'success' => $ok,
+    'message' => $ok ? 'Distribution status updated.' : 'Invalid status or distribution not found.',
+]);
