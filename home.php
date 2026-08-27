@@ -22,11 +22,14 @@ $scopeCreatorId = $seesAll ? null : (int)current_user()['id'];
 $stats = $documentModel->getStats($scopeCreatorId);
 $statusBreakdown = $documentModel->getStatusBreakdown($scopeCreatorId);
 $statusTotal = array_sum($statusBreakdown);
-// Office-wide analytics are scoped to the signed-in user's own office;
-// accounts with no department see every office.
-$officeDeptId = !empty(current_user()['department_id']) ? (int)current_user()['department_id'] : null;
-$officeName = 'All Offices';
-if ($officeDeptId !== null) {
+// Office analytics follow the same oversight rule as the dashboard tiles:
+// the Administrator's and the Secretary's offices consolidate every office,
+// everyone else sees their own. Accounts with no department also consolidate.
+$officeDeptId = null;
+$officeName   = 'All Offices';
+
+if (!$seesAll && !empty(current_user()['department_id'])) {
+    $officeDeptId = (int)current_user()['department_id'];
     $stmt = $pdo->prepare("SELECT name FROM departments WHERE id = :id LIMIT 1");
     $stmt->execute(['id' => $officeDeptId]);
     $officeName = (string)($stmt->fetchColumn() ?: 'My Office');

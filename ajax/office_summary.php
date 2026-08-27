@@ -22,7 +22,13 @@ if (!in_array($period, Document::PERFORMANCE_PERIODS, true)) {
 $pdo = Database::getConnection();
 $documentModel = new Document($pdo);
 
-$departmentId = !empty(current_user()['department_id']) ? (int)current_user()['department_id'] : null;
+// Same oversight rule the dashboard tiles use: the Administrator's and the
+// Secretary's offices consolidate every office, everyone else sees their own.
+// A null department means agency-wide.
+$departmentId = null;
+if (!user_sees_all_documents(current_user(), $pdo) && !empty(current_user()['department_id'])) {
+    $departmentId = (int)current_user()['department_id'];
+}
 
 echo json_encode([
     'success' => true,
