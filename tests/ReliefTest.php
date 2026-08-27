@@ -174,4 +174,84 @@ final class ReliefTest extends TestCase
         $this->assertTrue($this->relief->updateDistributionStatus($result['id'], 'Approved'));
         $this->assertSame('Approved', $this->relief->findDistribution($result['id'])['status']);
     }
+
+    public function testUpdateDistributionStatusCancellingReturnsStock(): void
+    {
+        $before = $this->stock($this->itemFood); // 100 available, 0 distributed
+        $result = $this->relief->createDistribution(
+            $this->baseDistributionData(['items' => [['inventory_id' => $this->itemFood, 'quantity' => 10]]]),
+            $this->logistics, false, null
+        );
+        $this->assertSame(90, (int)$this->stock($this->itemFood)['quantity_available']);
+
+        $this->assertTrue($this->relief->updateDistributionStatus($result['id'], 'Cancelled'));
+
+        $this->assertSame($before, $this->stock($this->itemFood), 'Cancelling must credit the exact quantity back.');
+    }
+
+    public function testUpdateDistributionStatusCancellingTwiceIsANoOpForStock(): void
+    {
+        $result = $this->relief->createDistribution($this->baseDistributionData(), $this->logistics, false, null);
+        $this->relief->updateDistributionStatus($result['id'], 'Cancelled');
+        $afterFirstCancel = $this->stock($this->itemFood);
+
+        // Already Cancelled -> Cancelled again must not double-credit the stock.
+        $this->assertTrue($this->relief->updateDistributionStatus($result['id'], 'Cancelled'));
+
+        $this->assertSame($afterFirstCancel, $this->stock($this->itemFood));
+    }
+
+    public function testUpdateDistributionStatusReinstatingDeductsStockAgain(): void
+    {
+        $result = $this->relief->createDistribution(
+            $this->baseDistributionData(['items' => [['inventory_id' => $this->itemFood, 'quantity' => 10]]]),
+            $this->logistics, false, null
+        );
+        $this->relief->updateDistributionStatus($result['id'], 'Cancelled');
+        $this->assertSame(100, (int)$this->stock($this->itemFood)['quantity_available']);
+
+        $this->assertTrue($this->relief->updateDistributionStatus($result['id'], 'Approved'));
+
+        $this->assertSame(90, (int)$this->stock($this->itemFood)['quantity_available']);
+        $this->assertSame(10, (int)$this->stock($this->itemFood)['quantity_distributed']);
+    }
+
+    public function testUpdateDistributionStatusBetweenTwoNonCancelledStatusesLeavesStockAlone(): void
+    {
+        $result = $this->relief->createDistribution($this->baseDistributionData(), $this->logistics, true, $this->doc);
+        $afterCreate = $this->stock($this->itemFood);
+
+        $this->relief->updateDistributionStatus($result['id'], 'Approved');
+        $this->assertTrue($this->relief->updateDistributionStatus($result['id'], 'Completed'));
+
+        $this->assertSame($afterCreate, $this->stock($this->itemFood));
+    }
+
+    public function testUpdateDistributionStatusRefusesToReinstateWithoutEnoughStock(): void
+    {
+        // Distribution A takes all 100 units, then gets cancelled (stock returns to 100).
+        $distA = $this->relief->createDistribution(
+            $this->baseDistributionData(['items' => [['inventory_id' => $this->itemFood, 'quantity' => 100]]]),
+            $this->logistics, false, null
+        );
+        $this->relief->updateDistributionStatus($distA['id'], 'Cancelled');
+        $this->assertSame(100, (int)$this->stock($this->itemFood)['quantity_available']);
+
+        // That stock is then genuinely committed to distribution B.
+        $this->relief->createDistribution(
+            $this->baseDistributionData(['items' => [['inventory_id' => $this->itemFood, 'quantity' => 100]]]),
+            $this->logistics, false, null
+        );
+        $this->assertSame(0, (int)$this->stock($this->itemFood)['quantity_available']);
+
+        // Reinstating A now has nothing left to draw on.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Cannot reinstate/');
+        try {
+            $this->relief->updateDistributionStatus($distA['id'], 'Approved');
+        } finally {
+            $this->assertSame('Cancelled', $this->relief->findDistribution($distA['id'])['status']);
+            $this->assertSame(0, (int)$this->stock($this->itemFood)['quantity_available'], 'A refused reinstate must not partially deduct.');
+        }
+    }
 }
