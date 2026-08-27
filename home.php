@@ -186,18 +186,19 @@ include __DIR__ . '/includes/header.php';
       <div class="card-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
           <div>Individual Performance</div>
-          <div class="text-muted small fw-normal" id="perfSubtitle">Today (<?= date('M j, Y') ?>)</div>
+          <div class="text-muted small fw-normal" id="perfSubtitle">By due date &middot; This Month</div>
         </div>
         <div class="perf-tabs" id="perfTabs">
           <button type="button" class="perf-tab" data-period="as_of_today">As of Today</button>
-          <button type="button" class="perf-tab active" data-period="today">Today</button>
+          <button type="button" class="perf-tab" data-period="today">Today</button>
           <button type="button" class="perf-tab" data-period="week">This Week</button>
-          <button type="button" class="perf-tab" data-period="month">Month</button>
+          <button type="button" class="perf-tab active" data-period="month">Month</button>
           <button type="button" class="perf-tab" data-period="quarter">Quarter</button>
           <button type="button" class="perf-tab" data-period="year">Year</button>
         </div>
       </div>
       <div class="p-3">
+        <div id="perfEmptyNote" class="alert alert-light border text-muted small d-none py-2 px-3"></div>
         <div class="row g-3">
           <div class="col-md-6 col-xl-3">
             <div class="perf-card">
@@ -271,19 +272,20 @@ include __DIR__ . '/includes/header.php';
       <div class="card-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
           <div>Office Document Tracking — <?= e(strtoupper($officeName)) ?></div>
-          <div class="text-muted small fw-normal" id="officeSubtitle">Today (<?= date('M j, Y') ?>)</div>
+          <div class="text-muted small fw-normal" id="officeSubtitle">By due date &middot; This Month</div>
         </div>
         <div class="perf-tabs" id="officeTabs">
           <button type="button" class="perf-tab" data-period="as_of_today">As of Today</button>
-          <button type="button" class="perf-tab active" data-period="today">Today</button>
+          <button type="button" class="perf-tab" data-period="today">Today</button>
           <button type="button" class="perf-tab" data-period="week">This Week</button>
-          <button type="button" class="perf-tab" data-period="month">Month</button>
+          <button type="button" class="perf-tab active" data-period="month">Month</button>
           <button type="button" class="perf-tab" data-period="quarter">Quarter</button>
           <button type="button" class="perf-tab" data-period="year">Year</button>
         </div>
       </div>
 
       <div class="p-3">
+        <div id="offEmptyNote" class="alert alert-light border text-muted small d-none py-2 px-3"></div>
         <div class="row g-3">
           <div class="col-md-6 col-xl-4">
             <div class="perf-card">

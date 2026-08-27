@@ -68,6 +68,27 @@ const PERF_PERIOD_LABELS = {
   year: 'This Year',
 };
 
+/**
+ * Every tile in both panels is filtered by the document's due date, so the
+ * heading says so. "Today" means due exactly today, which is legitimately
+ * empty most days — without this the panel just reads as broken.
+ */
+function periodSubtitle(period) {
+  return 'By due date · ' + (PERF_PERIOD_LABELS[period] || 'This Month');
+}
+
+/** Shows a note when a period genuinely has nothing, instead of a wall of zeros. */
+function toggleEmptyNote(id, isEmpty, period) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('d-none', !isEmpty);
+  if (isEmpty) {
+    el.textContent = period === 'today'
+      ? 'Nothing is due today. Pick a wider period above to see more.'
+      : 'No documents fall in this period. Try a wider one above.';
+  }
+}
+
 function initPerformancePanel() {
   const tabs = document.getElementById('perfTabs');
   if (!tabs) return;
@@ -80,7 +101,7 @@ function initPerformancePanel() {
     loadPerformanceSummary(btn.dataset.period);
   });
 
-  loadPerformanceSummary('today');
+  loadPerformanceSummary('month');
 }
 
 function loadPerformanceSummary(period) {
@@ -89,8 +110,11 @@ function loadPerformanceSummary(period) {
     .then((res) => {
       if (!res.success) return;
       renderPerformanceSummary(res.summary);
+      const s = res.summary;
+      toggleEmptyNote('perfEmptyNote',
+        s.assigned.total === 0 && s.active.total === 0 && s.resolved.total === 0, res.period);
       const subtitle = document.getElementById('perfSubtitle');
-      if (subtitle) subtitle.textContent = PERF_PERIOD_LABELS[res.period] || 'Today';
+      if (subtitle) subtitle.textContent = periodSubtitle(res.period);
     })
     .catch(() => notify('error', 'Could not load performance data.'));
 }
@@ -172,7 +196,7 @@ function initOfficePanel() {
     loadOfficeSummary(btn.dataset.period);
   });
 
-  loadOfficeSummary('today');
+  loadOfficeSummary('month');
 }
 
 function loadOfficeSummary(period) {
@@ -182,8 +206,12 @@ function loadOfficeSummary(period) {
       if (!res.success) return;
       renderOfficeSummary(res.summary);
       renderOfficeTrend(res.trend);
+      const s = res.summary;
+      toggleEmptyNote('offEmptyNote',
+        s.total.total === 0 && s.active.total === 0 && s.resolved.total === 0
+          && s.for_receipt === 0 && s.deferred === 0, res.period);
       const subtitle = document.getElementById('officeSubtitle');
-      if (subtitle) subtitle.textContent = PERF_PERIOD_LABELS[res.period] || 'Today';
+      if (subtitle) subtitle.textContent = periodSubtitle(res.period);
     })
     .catch(() => notify('error', 'Could not load office analytics.'));
 }
