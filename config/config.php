@@ -15,6 +15,20 @@ error_reporting(E_ALL);
 ini_set('display_errors', '1');
 
 // ---------------------------------------------------------------------
+// Timezone. Pinned rather than inherited: PHP defaults to whatever
+// date.timezone says in php.ini (UTC on this stack) while MySQL runs on
+// SYSTEM, so the two drifted eight hours apart. That is not just a wrong
+// greeting — every elapsed figure on the document timeline is measured by
+// subtracting a MySQL timestamp from PHP's clock, and anything newer than
+// the offset came out negative and was clamped to zero.
+//
+// Set here, before anything reads a date, and applied to the database
+// connection as a matching fixed offset so the pair agrees on any host.
+// ---------------------------------------------------------------------
+define('APP_TIMEZONE', 'Asia/Manila');
+date_default_timezone_set(APP_TIMEZONE);
+
+// ---------------------------------------------------------------------
 // Secure session configuration — must run BEFORE session_start().
 // ---------------------------------------------------------------------
 if (session_status() === PHP_SESSION_NONE) {
