@@ -20,6 +20,240 @@ class Relief
     // DASHBOARD / ANALYTICS
     // ===============================================================
 
+    // -----------------------------------------------------------------
+    // REPORTS
+    // Four views over one filtered join. The WHERE clause is built once in
+    // buildReportScope() so the views cannot drift on what a filter means.
+    // -----------------------------------------------------------------
+
+    public const REPORT_VIEWS       = ['distributions', 'goods', 'centres', 'trend'];
+    public const REPORT_GRANULARITY = ['day', 'week', 'month'];
+    public const REPORT_PRESETS     = ['today', 'week', 'month', 'quarter', 'year', 'all', 'custom'];
+
+    /**
+     * Resolves a date preset to a concrete from/to pair. 'custom' passes the
+     * caller's own dates through; 'all' removes the date bound entirely.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    public static function resolveReportDates(string $preset, ?string $from, ?string $to): array
+    {
+        $valid = static fn(?string $d): ?string =>
+            ($d !== null && $d !== '' && DateTime::createFromFormat('Y-m-d', $d)) ? $d : null;
+
+        return match ($preset) {
+            'today'   => [date('Y-m-d'), date('Y-m-d')],
+            'week'    => [date('Y-m-d', strtotime('monday this week')), date('Y-m-d', strtotime('sunday this week'))],
+            'month'   => [date('Y-m-01'), date('Y-m-t')],
+            'quarter' => [
+                date('Y-m-01', mktime(0, 0, 0, (intdiv((int)date('n') - 1, 3) * 3) + 1, 1)),
+                date('Y-m-t',  mktime(0, 0, 0, (intdiv((int)date('n') - 1, 3) * 3) + 3, 1)),
+            ],
+            'year'    => [date('Y-01-01'), date('Y-12-31')],
+            'custom'  => [$valid($from), $valid($to)],
+            default   => [null, null],   // 'all'
+        };
+    }
+
+    /**
+     * Turns a filter set into WHERE fragments and bound parameters. Shared by
+     * every report view, so a filter means the same thing in all of them.
+     *
+     * @return array{where: string, params: array<string,mixed>}
+     */
+    private function buildReportScope(array $f): array
+    {
+        $where  = [];
+        $params = [];
+
+        if (!empty($f['date_from'])) {
+            $where[] = 'd.distribution_date >= :dateFrom';
+            $params['dateFrom'] = $f['date_from'];
+        }
+        if (!empty($f['date_to'])) {
+            $where[] = 'd.distribution_date <= :dateTo';
+            $params['dateTo'] = $f['date_to'];
+        }
+        if (!empty($f['center_id'])) {
+            $where[] = 'd.evacuation_center_id = :centerId';
+            $params['centerId'] = (int)$f['center_id'];
+        }
+        if (!empty($f['target_area'])) {
+            $where[] = 'c.target_area = :targetArea';
+            $params['targetArea'] = $f['target_area'];
+        }
+        if (!empty($f['category'])) {
+            $where[] = 'ri.category = :category';
+            $params['category'] = $f['category'];
+        }
+        if (!empty($f['inventory_id'])) {
+            $where[] = 'di.inventory_id = :inventoryId';
+            $params['inventoryId'] = (int)$f['inventory_id'];
+        }
+
+        if (!empty($f['status'])) {
+            $where[] = 'd.status = :status';
+            $params['status'] = $f['status'];
+        } else {
+            // Cancelled events released nothing, and their stock has been
+            // returned, so they are out unless explicitly asked for.
+            $where[] = "d.status <> 'Cancelled'";
+        }
+
+        return ['where' => $where ? 'WHERE ' . implode(' AND ', $where) : '', 'params' => $params];
+    }
+
+    /** The joined source every report view groups differently. */
+    private const REPORT_FROM = "
+        FROM distributions d
+        JOIN evacuation_centers c ON c.id = d.evacuation_center_id
+        LEFT JOIN distribution_items di ON di.distribution_id = d.id
+        LEFT JOIN relief_inventory ri ON ri.id = di.inventory_id";
+
+    /** View A — one row per distribution event. */
+    public function reportDistributions(array $filters): array
+    {
+        $scope = $this->buildReportScope($filters);
+        $sql = "SELECT d.id, d.reference_no, d.distribution_date, d.status, d.remarks,
+                       d.total_beneficiaries, c.name AS center_name, c.target_area,
+                       u.full_name AS distributed_by_name,
+                       COUNT(DISTINCT di.id) AS line_items,
+                       COALESCE(SUM(di.quantity),0) AS units
+                " . self::REPORT_FROM . "
+                JOIN users u ON u.id = d.distributed_by
+                {$scope['where']}
+                GROUP BY d.id
+                ORDER BY d.distribution_date DESC, d.id DESC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($scope['params']);
+        return $stmt->fetchAll();
+    }
+
+    /** View B — one row per released line item. */
+    public function reportGoods(array $filters): array
+    {
+        $scope = $this->buildReportScope($filters);
+        // An event with no line items has nothing to show in this view; the
+        // LEFT JOIN would otherwise yield a row of nulls.
+        $where = $scope['where'] === ''
+            ? 'WHERE di.id IS NOT NULL'
+            : $scope['where'] . ' AND di.id IS NOT NULL';
+
+        $sql = "SELECT d.reference_no, d.distribution_date, d.status,
+                       c.name AS center_name, c.target_area,
+                       ri.item_name, ri.category, ri.unit,
+                       di.quantity, d.total_beneficiaries
+                " . self::REPORT_FROM . "
+                {$where}
+                ORDER BY d.distribution_date DESC, d.reference_no, ri.category, ri.item_name";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($scope['params']);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * View C — one row per evacuation centre.
+     *
+     * Beneficiaries are counted from distinct events, not from the joined
+     * rows: an event with three line items would otherwise have its
+     * beneficiary figure counted three times.
+     */
+    public function reportByCentre(array $filters): array
+    {
+        $scope = $this->buildReportScope($filters);
+
+        $goods = $this->pdo->prepare(
+            "SELECT c.id, c.name AS center_name, c.target_area, c.capacity,
+                    COUNT(DISTINCT d.id) AS events,
+                    COALESCE(SUM(di.quantity),0) AS units,
+                    COUNT(DISTINCT ri.category) AS categories
+             " . self::REPORT_FROM . "
+             {$scope['where']}
+             GROUP BY c.id"
+        );
+        $goods->execute($scope['params']);
+        $rows = $goods->fetchAll();
+
+        $people = $this->pdo->prepare(
+            "SELECT t.center_id, COALESCE(SUM(t.total_beneficiaries),0) AS beneficiaries FROM (
+                 SELECT DISTINCT d.id, d.evacuation_center_id AS center_id, d.total_beneficiaries
+                 " . self::REPORT_FROM . "
+                 {$scope['where']}
+             ) t GROUP BY t.center_id"
+        );
+        $people->execute($scope['params']);
+        $byCentre = array_column($people->fetchAll(), 'beneficiaries', 'center_id');
+
+        foreach ($rows as &$row) {
+            $row['beneficiaries'] = (int)($byCentre[$row['id']] ?? 0);
+        }
+        unset($row);
+
+        usort($rows, static fn($a, $b) => (int)$b['units'] <=> (int)$a['units']
+            ?: strcmp($a['center_name'], $b['center_name']));
+
+        return $rows;
+    }
+
+    /** View D — totals per day, week or month. */
+    public function reportTrend(array $filters): array
+    {
+        $granularity = in_array($filters['granularity'] ?? '', self::REPORT_GRANULARITY, true)
+            ? $filters['granularity'] : 'month';
+
+        $bucket = match ($granularity) {
+            'day'  => "DATE_FORMAT(d.distribution_date, '%Y-%m-%d')",
+            'week' => "DATE_FORMAT(d.distribution_date, '%x-W%v')",
+            default => "DATE_FORMAT(d.distribution_date, '%Y-%m')",
+        };
+
+        $scope = $this->buildReportScope($filters);
+        $sql = "SELECT {$bucket} AS bucket,
+                       COUNT(DISTINCT d.id) AS events,
+                       COUNT(DISTINCT d.evacuation_center_id) AS centres,
+                       COALESCE(SUM(di.quantity),0) AS units
+                " . self::REPORT_FROM . "
+                {$scope['where']}
+                GROUP BY bucket
+                ORDER BY bucket ASC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($scope['params']);
+        return $stmt->fetchAll();
+    }
+
+    /** Beneficiary total for the filtered set, counted once per event. */
+    public function reportBeneficiaries(array $filters): int
+    {
+        $scope = $this->buildReportScope($filters);
+        $sql = "SELECT COALESCE(SUM(t.total_beneficiaries),0) FROM (
+                    SELECT DISTINCT d.id, d.total_beneficiaries
+                    " . self::REPORT_FROM . "
+                    {$scope['where']}
+                ) t";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($scope['params']);
+        return (int)$stmt->fetchColumn();
+    }
+
+    /** Everything the filter bar needs to populate its dropdowns. */
+    public function reportFilterOptions(): array
+    {
+        return [
+            'centres'   => $this->pdo->query(
+                "SELECT id, name, target_area FROM evacuation_centers ORDER BY name"
+            )->fetchAll(),
+            'areas'     => $this->pdo->query(
+                "SELECT DISTINCT target_area FROM evacuation_centers ORDER BY target_area"
+            )->fetchAll(PDO::FETCH_COLUMN),
+            'categories'=> $this->pdo->query(
+                "SELECT DISTINCT category FROM relief_inventory ORDER BY category"
+            )->fetchAll(PDO::FETCH_COLUMN),
+            'items'     => $this->pdo->query(
+                "SELECT id, item_name, category, unit FROM relief_inventory ORDER BY category, item_name"
+            )->fetchAll(),
+        ];
+    }
+
     public function getStats(): array
     {
         $avail = $this->pdo->query(

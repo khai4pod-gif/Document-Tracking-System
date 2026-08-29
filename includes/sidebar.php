@@ -102,6 +102,9 @@ function nav_active(string $file, string $current): string
     <a href="distributions.php" class="nav-link <?= nav_active('distributions.php', $__current) ?>">
       <i class="bi bi-truck"></i><span>Distributions</span>
     </a>
+    <a href="relief_reports.php" class="nav-link <?= nav_active('relief_reports.php', $__current) ?>">
+      <i class="bi bi-clipboard-data"></i><span>Relief Reports</span>
+    </a>
     <?php if (in_array($__role, ['admin', 'logistics', 'approver'], true)): ?>
     <a href="inventory.php" class="nav-link <?= nav_active('inventory.php', $__current) ?>">
       <i class="bi bi-boxes"></i><span>Relief Inventory</span>
