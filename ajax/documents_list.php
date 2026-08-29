@@ -19,6 +19,13 @@ $filters = [
     'status'   => $_GET['status'] ?? '',
     'priority' => $_GET['priority'] ?? '',
     'search'   => $_GET['search'] ?? '',
+    // Compliance drill-through from the Home analytics cards. Validated
+    // against the model's own lists so a hand-edited URL can't reach a state
+    // the interface has no way to represent or clear.
+    'compliance' => in_array($_GET['compliance'] ?? '', Document::COMPLIANCE_FILTERS, true)
+        ? $_GET['compliance'] : '',
+    'period'     => in_array($_GET['period'] ?? '', Document::PERFORMANCE_PERIODS, true)
+        ? $_GET['period'] : '',
 ];
 
 if (!in_array($user['role'], ['admin', 'logistics', 'approver'], true)) {

@@ -237,9 +237,9 @@ include __DIR__ . '/includes/header.php';
                 <div class="perf-card-title"><i class="bi bi-check-circle" style="color:var(--success);"></i> Resolved Documents</div>
                 <div class="perf-value" id="perfResolvedTotal">0</div>
                 <div class="perf-sub-row">
-                  <div class="perf-sub">Compliant<b id="perfCompliant" style="color:var(--success);">0</b></div>
-                  <div class="perf-sub">Non-Compliant<b id="perfNonCompliant" style="color:var(--danger);">0</b></div>
-                  <div class="perf-sub">Exempt<b id="perfExempt">0</b></div>
+                  <a class="perf-sub perf-sub--link" id="perfCompliantLink" href="documents.php?compliance=compliant">Compliant<b id="perfCompliant" style="color:var(--success);">0</b></a>
+                  <a class="perf-sub perf-sub--link" id="perfNonCompliantLink" href="documents.php?compliance=non_compliant">Non-Compliant<b id="perfNonCompliant" style="color:var(--danger);">0</b></a>
+                  <a class="perf-sub perf-sub--link" id="perfExemptLink" href="documents.php?compliance=exempt">Exempt<b id="perfExempt">0</b></a>
                 </div>
               </div>
               <div class="perf-accent" style="background:var(--success);"></div>
@@ -333,9 +333,9 @@ include __DIR__ . '/includes/header.php';
                 <div class="perf-card-title"><i class="bi bi-check-circle" style="color:var(--success);"></i> Resolved Documents</div>
                 <div class="perf-value" id="offResolved">0</div>
                 <div class="perf-sub-row">
-                  <div class="perf-sub">Compliant<b id="offCompliant" style="color:var(--success);">0</b></div>
-                  <div class="perf-sub">Non-Compliant<b id="offNonCompliant" style="color:var(--danger);">0</b></div>
-                  <div class="perf-sub">Exempt<b id="offResolvedExempt">0</b></div>
+                  <a class="perf-sub perf-sub--link" id="offCompliantLink" href="documents.php?compliance=compliant">Compliant<b id="offCompliant" style="color:var(--success);">0</b></a>
+                  <a class="perf-sub perf-sub--link" id="offNonCompliantLink" href="documents.php?compliance=non_compliant">Non-Compliant<b id="offNonCompliant" style="color:var(--danger);">0</b></a>
+                  <a class="perf-sub perf-sub--link" id="offResolvedExemptLink" href="documents.php?compliance=exempt">Exempt<b id="offResolvedExempt">0</b></a>
                 </div>
               </div>
               <div class="perf-accent" style="background:var(--success);"></div>

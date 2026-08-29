@@ -20,7 +20,9 @@ const CREATED_COL = 7;
 function documentsListUrl() {
   return 'ajax/documents_list.php?archived=' + (SHOW_ARCHIVED ? '1' : '0')
     + '&status=' + encodeURIComponent($('#filterStatus').val() || '')
-    + '&priority=' + encodeURIComponent($('#filterPriority').val() || '');
+    + '&priority=' + encodeURIComponent($('#filterPriority').val() || '')
+    + '&compliance=' + encodeURIComponent(FILTER_COMPLIANCE || '')
+    + '&period=' + encodeURIComponent(FILTER_PERIOD || '');
 }
 
 let documentModal, documentsTable;

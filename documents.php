@@ -24,6 +24,29 @@ if (!in_array($filterStatus, $statusOptions, true)) {
 if (!in_array($filterPriority, $priorityOptions, true)) {
     $filterPriority = '';
 }
+
+// Compliance drill-through from the Home analytics cards, which carry their
+// period along so the list shows exactly the set the number counted.
+$filterCompliance = (string)($_GET['compliance'] ?? '');
+$filterPeriod     = (string)($_GET['period'] ?? '');
+if (!in_array($filterCompliance, Document::COMPLIANCE_FILTERS, true)) {
+    $filterCompliance = '';
+    $filterPeriod = '';
+}
+if (!in_array($filterPeriod, Document::PERFORMANCE_PERIODS, true)) {
+    $filterPeriod = '';
+}
+
+$complianceLabels = [
+    'compliant'     => 'Compliant',
+    'non_compliant' => 'Non-Compliant',
+    'exempt'        => 'Exempt',
+];
+$periodLabels = [
+    'as_of_today' => 'as of today', 'today' => 'today', 'week' => 'this week',
+    'month'       => 'this month',  'quarter' => 'this quarter', 'year' => 'this year',
+];
+$hasFilter = $filterStatus !== '' || $filterPriority !== '' || $filterCompliance !== '';
 $canRoute = user_can_route(current_user(), Database::getConnection());
 
 $pageTitle = $showArchived ? 'Archived Documents' : 'Documents';
@@ -58,7 +81,15 @@ include __DIR__ . '/includes/header.php';
         <option<?= $filterPriority === $__opt ? ' selected' : '' ?>><?= e($__opt) ?></option>
       <?php endforeach; ?>
     </select>
-    <?php if ($filterStatus !== '' || $filterPriority !== ''): ?>
+    <?php if ($filterCompliance !== ''): ?>
+      <span class="badge rounded-pill text-bg-light border align-self-center">
+        <i class="bi bi-funnel me-1"></i><?= e($complianceLabels[$filterCompliance]) ?>
+        <?php if ($filterPeriod !== ''): ?>
+          &middot; completed <?= e($periodLabels[$filterPeriod] ?? $filterPeriod) ?>
+        <?php endif; ?>
+      </span>
+    <?php endif; ?>
+    <?php if ($hasFilter): ?>
       <a href="documents.php<?= $showArchived ? '?archived=1' : '' ?>"
          class="btn btn-sm btn-outline-secondary" title="Clear filters">
         <i class="bi bi-x-lg"></i>
@@ -303,11 +334,17 @@ $extraScripts = <<<'HTML'
 const SHOW_ARCHIVED = ARCHIVED_FLAG;
 const CAN_ROUTE = CAN_ROUTE_FLAG;
 const CURRENT_USER_ID = CURRENT_USER_ID_FLAG;
+// Set from the query string only — these have no dropdown; they arrive when
+// a Home analytics card links through, and the chip in the header shows them.
+const FILTER_COMPLIANCE = 'COMPLIANCE_FLAG';
+const FILTER_PERIOD = 'PERIOD_FLAG';
 </script>
 HTML;
 $extraScripts = str_replace('ARCHIVED_FLAG', $showArchived ? 'true' : 'false', $extraScripts);
 $extraScripts = str_replace('CAN_ROUTE_FLAG', $canRoute ? 'true' : 'false', $extraScripts);
 $extraScripts = str_replace('CURRENT_USER_ID_FLAG', (string)(int)current_user()['id'], $extraScripts);
+$extraScripts = str_replace('COMPLIANCE_FLAG', $filterCompliance, $extraScripts);
+$extraScripts = str_replace('PERIOD_FLAG', $filterPeriod, $extraScripts);
 $extraScripts .= '<script src="' . e(asset('assets/js/documents.js')) . '"></script>';
 include __DIR__ . '/includes/footer.php';
 ?>

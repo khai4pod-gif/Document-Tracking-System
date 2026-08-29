@@ -26,6 +26,20 @@ class Document
     private const OVERDUE_SQL =
         "(d.due_date IS NOT NULL AND d.due_date < CURDATE() AND d.status <> 'Completed')";
 
+    /**
+     * The day a document was completed, preferring the audit-log entry over
+     * documents.updated_at — the latter moves for unrelated reasons such as a
+     * later title edit, which would silently reclassify an on-time document
+     * as late. Mirrors what tallyCompliance() does in PHP.
+     */
+    private const COMPLETED_ON_SQL = "DATE(COALESCE(
+        (SELECT MAX(l.created_at) FROM document_logs l
+          WHERE l.document_id = d.id AND l.action = 'Completed'),
+        d.updated_at))";
+
+    /** Compliance verdicts the documents list can filter on. */
+    public const COMPLIANCE_FILTERS = ['compliant', 'non_compliant', 'exempt'];
+
     // -------------------------------------------------------------
     // DASHBOARD / KPI QUERIES
     // -------------------------------------------------------------
@@ -568,6 +582,25 @@ class Document
             $where[] = 'd.priority = :priority';
             $params['priority'] = $filters['priority'];
         }
+        // Compliance drill-through from the Home analytics cards. The three
+        // branches reproduce tallyCompliance() in SQL so the list can never
+        // disagree with the count that linked to it.
+        if (!empty($filters['compliance'])) {
+            $completedOn = self::COMPLETED_ON_SQL;
+            $where[] = match ($filters['compliance']) {
+                'compliant'     => "(d.status = 'Completed' AND d.due_date IS NOT NULL AND {$completedOn} <= d.due_date)",
+                'non_compliant' => "(d.status = 'Completed' AND d.due_date IS NOT NULL AND {$completedOn} >  d.due_date)",
+                'exempt'        => "(d.status = 'Completed' AND d.due_date IS NULL)",
+                default         => '1 = 1',
+            };
+        }
+
+        // The cards are period-filtered, so the link carries the period too —
+        // otherwise clicking "4" could land on a list of six.
+        if (!empty($filters['period'])) {
+            $where[] = $this->dueDatePeriodClause((string)$filters['period'], 'd');
+        }
+
         if (!empty($filters['search'])) {
             // Two placeholders, not one reused: prepare emulation is off, and
             // a named parameter can only be bound once per statement.

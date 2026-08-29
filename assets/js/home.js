@@ -77,6 +77,24 @@ function periodSubtitle(period) {
   return 'By due date · ' + (PERF_PERIOD_LABELS[period] || 'This Month');
 }
 
+/**
+ * Points the compliance figures at the matching document list, carrying the
+ * selected period so the list shows exactly the set the number counted —
+ * without it, clicking "4" could land on a list of six.
+ */
+function linkComplianceFigures(prefix, period) {
+  const targets = {
+    compliant: prefix + 'CompliantLink',
+    non_compliant: prefix + 'NonCompliantLink',
+    exempt: prefix === 'perf' ? 'perfExemptLink' : 'offResolvedExemptLink',
+  };
+  Object.entries(targets).forEach(([verdict, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.href = 'documents.php?compliance=' + verdict + '&period=' + encodeURIComponent(period);
+  });
+}
+
 /** Shows a note when a period genuinely has nothing, instead of a wall of zeros. */
 function toggleEmptyNote(id, isEmpty, period) {
   const el = document.getElementById(id);
@@ -113,6 +131,7 @@ function loadPerformanceSummary(period) {
       const s = res.summary;
       toggleEmptyNote('perfEmptyNote',
         s.assigned.total === 0 && s.active.total === 0 && s.resolved.total === 0, res.period);
+      linkComplianceFigures('perf', res.period);
       const subtitle = document.getElementById('perfSubtitle');
       if (subtitle) subtitle.textContent = periodSubtitle(res.period);
     })
@@ -210,6 +229,7 @@ function loadOfficeSummary(period) {
       toggleEmptyNote('offEmptyNote',
         s.total.total === 0 && s.active.total === 0 && s.resolved.total === 0
           && s.for_receipt === 0 && s.deferred === 0, res.period);
+      linkComplianceFigures('off', res.period);
       const subtitle = document.getElementById('officeSubtitle');
       if (subtitle) subtitle.textContent = periodSubtitle(res.period);
     })
