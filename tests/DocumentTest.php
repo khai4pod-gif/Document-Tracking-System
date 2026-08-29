@@ -485,4 +485,71 @@ final class DocumentTest extends TestCase
         $stmt->execute(['id' => $id]);
         return $stmt->fetch();
     }
+
+    /**
+     * listForTable()'s 'compliance' filter reproduces tallyCompliance() in
+     * raw SQL (see Document::COMPLETED_ON_SQL) so the Home compliance cards'
+     * drill-through links can never show a different set than the number
+     * that linked to them. Checks each of the three verdicts independently.
+     */
+    public function testListForTableFiltersComplianceToCompletedDocumentsOnly(): void
+    {
+        $compliant = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('+1 day'))]), $this->admin);
+        $this->doc->markCompleted($compliant['id'], $this->admin);
+
+        $nonCompliant = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('-1 day'))]), $this->admin);
+        $this->doc->markCompleted($nonCompliant['id'], $this->admin);
+
+        $exempt = $this->doc->create($this->baseDocData(['due_date' => null]), $this->admin);
+        $this->doc->markCompleted($exempt['id'], $this->admin);
+
+        // Overdue but still unfinished — must never carry a compliance
+        // verdict, since only a Completed document has one.
+        $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('-5 days'))]), $this->admin);
+
+        $compliantRows = $this->doc->listForTable(['compliance' => 'compliant']);
+        $this->assertCount(1, $compliantRows);
+        $this->assertSame($compliant['id'], $compliantRows[0]['id']);
+
+        $nonCompliantRows = $this->doc->listForTable(['compliance' => 'non_compliant']);
+        $this->assertCount(1, $nonCompliantRows);
+        $this->assertSame($nonCompliant['id'], $nonCompliantRows[0]['id']);
+
+        $exemptRows = $this->doc->listForTable(['compliance' => 'exempt']);
+        $this->assertCount(1, $exemptRows);
+        $this->assertSame($exempt['id'], $exemptRows[0]['id']);
+    }
+
+    /**
+     * The property that actually matters: the drill-through list's row
+     * count for each verdict exactly matches what getPerformanceSummary()
+     * (which uses tallyCompliance() directly) says that verdict's count is,
+     * for the same underlying documents.
+     */
+    public function testListForTableComplianceCountsMatchGetPerformanceSummary(): void
+    {
+        $onTime = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('+2 days'))]), $this->deptUserA);
+        $this->doc->markCompleted($onTime['id'], $this->deptUserA);
+
+        $late = $this->doc->create($this->baseDocData(['due_date' => date('Y-m-d', strtotime('-2 days'))]), $this->deptUserA);
+        $this->doc->markCompleted($late['id'], $this->deptUserA);
+
+        $undated = $this->doc->create($this->baseDocData(['due_date' => null]), $this->deptUserA);
+        $this->doc->markCompleted($undated['id'], $this->deptUserA);
+
+        $summary = $this->doc->getPerformanceSummary($this->deptUserA, 'year');
+
+        $this->assertCount(
+            $summary['resolved']['compliant'],
+            $this->doc->listForTable(['compliance' => 'compliant', 'period' => 'year'])
+        );
+        $this->assertCount(
+            $summary['resolved']['non_compliant'],
+            $this->doc->listForTable(['compliance' => 'non_compliant', 'period' => 'year'])
+        );
+        $this->assertCount(
+            $summary['resolved']['exempt'],
+            $this->doc->listForTable(['compliance' => 'exempt', 'period' => 'year'])
+        );
+    }
 }

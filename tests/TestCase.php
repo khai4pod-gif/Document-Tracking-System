@@ -34,6 +34,10 @@ abstract class TestCase extends BaseTestCase
         $user = getenv('TEST_DB_USER') ?: 'root';
         $pass = getenv('TEST_DB_PASS') ?: '';
 
+        // Same offset config/db_connect.php pins the app's connection to —
+        // must match, or CURDATE()/NOW() here disagree with PHP's clock.
+        $offset = (new DateTime('now', new DateTimeZone(APP_TIMEZONE)))->format('P');
+
         self::$pdo = new PDO(
             "mysql:host={$host};dbname={$name};charset=utf8mb4",
             $user,
@@ -42,6 +46,7 @@ abstract class TestCase extends BaseTestCase
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8mb4', time_zone = '{$offset}'",
             ]
         );
     }
