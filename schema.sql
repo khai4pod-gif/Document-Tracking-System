@@ -197,6 +197,35 @@ CREATE TABLE `relief_inventory` (
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Every change to a stock level, so the inventory can be audited and a
+-- balance read back for any past date. relief_inventory holds only the
+-- current position; without this, a restock, a correction or a write-off
+-- left no trace of who changed what, or why.
+--
+-- quantity is signed: positive brings stock in, negative takes it out.
+-- balance_after stores the running total so a report can read the position
+-- on a date directly instead of replaying the whole history.
+CREATE TABLE `relief_stock_movements` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `inventory_id` INT UNSIGNED NOT NULL,
+  `movement_type` ENUM('Opening','Receipt','Release','Return','Adjustment','Write-off') NOT NULL,
+  `quantity` INT NOT NULL,
+  `balance_after` INT UNSIGNED NOT NULL,
+  `distribution_id` INT UNSIGNED DEFAULT NULL,
+  `reference` VARCHAR(120) DEFAULT NULL,
+  `remarks` VARCHAR(500) DEFAULT NULL,
+  `moved_by` INT UNSIGNED DEFAULT NULL,
+  `moved_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_movements_item_date` (`inventory_id`, `moved_at`),
+  INDEX `idx_movements_date` (`moved_at`),
+  CONSTRAINT `fk_movement_inventory` FOREIGN KEY (`inventory_id`)
+      REFERENCES `relief_inventory`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_movement_distribution` FOREIGN KEY (`distribution_id`)
+      REFERENCES `distributions`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_movement_user` FOREIGN KEY (`moved_by`)
+      REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE `evacuation_centers` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(150) NOT NULL,
@@ -283,6 +312,16 @@ INSERT INTO `relief_inventory` (`item_name`, `category`, `unit`, `quantity_avail
 ('First Aid Kit',           'Medical', 'kit',  800,  150,  100),
 ('Emergency Tent',          'Shelter', 'unit', 300,  60,   50),
 ('Hygiene Kit',             'Hygiene', 'kit',  1500, 400,  200);
+
+-- Opening position for the seeded stock. Inserted directly above rather than
+-- through createInventoryItem(), so the ledger rows it would have written are
+-- added here — otherwise a fresh install starts with inventory that has no
+-- history and an item movement report that cannot balance.
+INSERT INTO `relief_stock_movements`
+      (`inventory_id`, `movement_type`, `quantity`, `balance_after`, `remarks`)
+SELECT `id`, 'Opening', `quantity_available`, `quantity_available`,
+       'Opening balance from the initial stock load.'
+  FROM `relief_inventory`;
 
 INSERT INTO `evacuation_centers` (`name`, `target_area`, `address`, `capacity`, `contact_person`, `contact_number`) VALUES
 ('San Isidro Elementary School', 'Barangay San Isidro', 'San Isidro, City Proper', 500, 'Brgy. Capt. R. Ramos', '0917-000-0001'),

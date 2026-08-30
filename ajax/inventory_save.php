@@ -53,11 +53,11 @@ $data = [
 
 try {
     if ($id > 0) {
-        $ok = $relief->updateInventoryItem($id, $data);
+        $ok = $relief->updateInventoryItem($id, $data, (int)current_user()['id']);
         json_response(['success' => $ok, 'message' => $ok ? 'Inventory item updated.' : 'Update failed.']);
     }
 
-    $newId = $relief->createInventoryItem($data);
+    $newId = $relief->createInventoryItem($data, (int)current_user()['id']);
     json_response(['success' => true, 'message' => 'Inventory item added.', 'id' => $newId]);
 } catch (Throwable $e) {
     error_log('[INVENTORY SAVE ERROR] ' . $e->getMessage());

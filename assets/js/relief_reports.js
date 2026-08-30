@@ -46,6 +46,20 @@ const REPORT_COLUMNS = {
     { label: 'Centres served', key: 'centres', num: true },
     { label: 'Units released', key: 'units', num: true, total: true },
   ],
+  // Opening + In − Out = Closing, by construction. "Released" is the net of
+  // goods that actually left, shown alongside rather than in place of Out,
+  // which also carries adjustments and write-offs.
+  movement: [
+    { label: 'Item', key: 'item_name' },
+    { label: 'Category', key: 'category' },
+    { label: 'Unit', key: 'unit' },
+    { label: 'Opening', key: 'opening', num: true, total: true },
+    { label: 'Stock in', key: 'moved_in', num: true, total: true },
+    { label: 'Stock out', key: 'moved_out', num: true, total: true },
+    { label: 'Closing', key: 'closing', num: true, total: true },
+    { label: 'of which released', key: 'released', num: true, total: true },
+    { label: 'Movements', key: 'movements', num: true, total: true },
+  ],
 };
 
 const DIST_STATUS_BADGE = {

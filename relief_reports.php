@@ -169,6 +169,7 @@ include __DIR__ . '/includes/header.php';
       <button type="button" class="perf-tab" data-view="goods">Goods released</button>
       <button type="button" class="perf-tab" data-view="centres">By centre</button>
       <button type="button" class="perf-tab" data-view="trend">Trend</button>
+      <button type="button" class="perf-tab" data-view="movement">Item movement</button>
     </div>
   </div>
   <div class="p-3">

@@ -52,10 +52,11 @@ $filters = [
 ];
 
 $rows = match ($view) {
-    'goods'   => $relief->reportGoods($filters),
-    'centres' => $relief->reportByCentre($filters),
-    'trend'   => $relief->reportTrend($filters),
-    default   => $relief->reportDistributions($filters),
+    'goods'    => $relief->reportGoods($filters),
+    'centres'  => $relief->reportByCentre($filters),
+    'trend'    => $relief->reportTrend($filters),
+    'movement' => $relief->reportItemMovement($filters),
+    default    => $relief->reportDistributions($filters),
 };
 
 // Summary strip — computed from the same filter set regardless of view, so

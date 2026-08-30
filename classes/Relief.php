@@ -21,12 +21,206 @@ class Relief
     // ===============================================================
 
     // -----------------------------------------------------------------
+    // STOCK LEDGER
+    // Every change to a stock level is recorded here, so the inventory can
+    // be audited and a balance read back for a past date. Callers own the
+    // surrounding transaction.
+    // -----------------------------------------------------------------
+
+    public const MOVEMENT_TYPES = ['Opening', 'Receipt', 'Release', 'Return', 'Adjustment', 'Write-off'];
+
+    /**
+     * Writes one ledger row. $quantity is signed — positive brings stock in,
+     * negative takes it out — and balance_after is read from the item so the
+     * ledger records the position that actually resulted, rather than one
+     * this method calculated separately and could get wrong.
+     */
+    private function recordStockMovement(
+        int $inventoryId,
+        string $type,
+        int $quantity,
+        ?int $userId = null,
+        ?int $distributionId = null,
+        ?string $remarks = null,
+        ?string $reference = null
+    ): void {
+        $balance = $this->pdo->prepare("SELECT quantity_available FROM relief_inventory WHERE id = :id");
+        $balance->execute(['id' => $inventoryId]);
+        $after = (int)$balance->fetchColumn();
+
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO relief_stock_movements
+                (inventory_id, movement_type, quantity, balance_after,
+                 distribution_id, reference, remarks, moved_by, moved_at)
+             VALUES (:inv, :type, :qty, :after, :dist, :ref, :remarks, :user, NOW())"
+        );
+        $stmt->execute([
+            'inv'     => $inventoryId,
+            'type'    => $type,
+            'qty'     => $quantity,
+            'after'   => $after,
+            'dist'    => $distributionId,
+            'ref'     => $reference !== null ? mb_substr($reference, 0, 120) : null,
+            'remarks' => $remarks !== null ? mb_substr($remarks, 0, 500) : null,
+            'user'    => $userId,
+        ]);
+    }
+
+    /** Ledger for one item, newest first — powers the inventory history modal. */
+    public function listStockMovements(int $inventoryId, int $limit = 100): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT m.*, u.full_name AS moved_by_name, d.reference_no AS distribution_ref
+               FROM relief_stock_movements m
+               LEFT JOIN users u ON u.id = m.moved_by
+               LEFT JOIN distributions d ON d.id = m.distribution_id
+              WHERE m.inventory_id = :inv
+              ORDER BY m.moved_at DESC, m.id DESC
+              LIMIT :lim"
+        );
+        $stmt->bindValue(':inv', $inventoryId, PDO::PARAM_INT);
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * View E — opening balance, movement by type, and closing balance for
+     * each item over the report period.
+     *
+     * Opening is the balance carried by the last movement before the period
+     * starts; closing is the last one within it. Where an item has no
+     * movement in either window the balance carries forward unchanged, so a
+     * quiet item still reports its true position rather than zero.
+     */
+    public function reportItemMovement(array $filters): array
+    {
+        $from = $filters['date_from'] ?? null;
+        $to   = $filters['date_to'] ?? null;
+
+        $params = [];
+        $windowStart = '';
+        $windowEnd   = '';
+        if ($from !== null) {
+            $windowStart = ' AND m.moved_at >= :fromA';
+            $params['fromA'] = $from . ' 00:00:00';
+        }
+        if ($to !== null) {
+            $windowEnd = ' AND m.moved_at <= :toA';
+            $params['toA'] = $to . ' 23:59:59';
+        }
+
+        $itemWhere = [];
+        if (!empty($filters['category'])) {
+            $itemWhere[] = 'ri.category = :category';
+            $params['category'] = $filters['category'];
+        }
+        if (!empty($filters['inventory_id'])) {
+            $itemWhere[] = 'ri.id = :inventoryId';
+            $params['inventoryId'] = (int)$filters['inventory_id'];
+        }
+        $itemWhere = $itemWhere ? 'WHERE ' . implode(' AND ', $itemWhere) : '';
+
+        $sql = "SELECT ri.id, ri.item_name, ri.category, ri.unit,
+                       ri.quantity_available, ri.reorder_level,
+                       -- In and out cover every movement type, so
+                       -- opening + in - out always equals closing. Splitting
+                       -- by type alone would not: a Return or an Adjustment
+                       -- moves the balance but is neither a receipt nor a
+                       -- release, and the columns would silently not add up.
+                       COALESCE(SUM(CASE WHEN m.quantity > 0 THEN m.quantity ELSE 0 END), 0) AS moved_in,
+                       COALESCE(SUM(CASE WHEN m.quantity < 0 THEN -m.quantity ELSE 0 END), 0) AS moved_out,
+                       -- Net of goods that actually left: releases less
+                       -- anything handed back when a distribution was cancelled.
+                       COALESCE(SUM(CASE WHEN m.movement_type IN ('Release','Return')
+                                         THEN -m.quantity ELSE 0 END), 0) AS released,
+                       COUNT(m.id) AS movements
+                  FROM relief_inventory ri
+                  LEFT JOIN relief_stock_movements m
+                         ON m.inventory_id = ri.id {$windowStart}{$windowEnd}
+                  {$itemWhere}
+                 GROUP BY ri.id
+                 ORDER BY ri.category, ri.item_name";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+
+        // Opening balance: the position left by the last movement before the
+        // window. Without a start bound there is no "before", so opening is
+        // the item's first recorded balance.
+        $openingStmt = $from !== null
+            ? $this->pdo->prepare(
+                "SELECT balance_after FROM relief_stock_movements
+                  WHERE inventory_id = :inv AND moved_at < :start
+                  ORDER BY moved_at DESC, id DESC LIMIT 1")
+            : $this->pdo->prepare(
+                "SELECT (balance_after - quantity) FROM relief_stock_movements
+                  WHERE inventory_id = :inv
+                  ORDER BY moved_at ASC, id ASC LIMIT 1");
+
+        $closingStmt = $this->pdo->prepare(
+            "SELECT balance_after FROM relief_stock_movements
+              WHERE inventory_id = :inv" . ($to !== null ? " AND moved_at <= :end" : '') . "
+              ORDER BY moved_at DESC, id DESC LIMIT 1"
+        );
+
+        // Distinguishes "no ledger at all" from "ledger starts after this
+        // period", which need different closing balances.
+        $everStmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM relief_stock_movements WHERE inventory_id = :inv"
+        );
+
+        foreach ($rows as &$row) {
+            $args = ['inv' => (int)$row['id']];
+            if ($from !== null) {
+                $args['start'] = $from . ' 00:00:00';
+            }
+            $openingStmt->execute($args);
+            $opening = $openingStmt->fetchColumn();
+
+            $closeArgs = ['inv' => (int)$row['id']];
+            if ($to !== null) {
+                $closeArgs['end'] = $to . ' 23:59:59';
+            }
+            $closingStmt->execute($closeArgs);
+            $closing = $closingStmt->fetchColumn();
+
+            if ($closing !== false) {
+                $row['closing'] = (int)$closing;
+            } else {
+                // Nothing recorded up to the period end. Either the item has
+                // no ledger at all — in which case its balance has never
+                // changed and today's quantity is the answer — or every
+                // movement it has came later, so at the end of this period it
+                // did not yet hold anything.
+                $everStmt->execute(['inv' => (int)$row['id']]);
+                $row['closing'] = (int)$everStmt->fetchColumn() > 0 ? 0 : (int)$row['quantity_available'];
+            }
+
+            if ($opening !== false) {
+                $row['opening'] = (int)$opening;
+            } elseif ((int)$row['movements'] === 0) {
+                // Nothing moved in the window either, so it opened where it
+                // closed. Reporting zero here would make a quiet item look as
+                // though it appeared from nowhere, and the row would not balance.
+                $row['opening'] = (int)$row['closing'];
+            } else {
+                $row['opening'] = 0;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    // -----------------------------------------------------------------
     // REPORTS
     // Four views over one filtered join. The WHERE clause is built once in
     // buildReportScope() so the views cannot drift on what a filter means.
     // -----------------------------------------------------------------
 
-    public const REPORT_VIEWS       = ['distributions', 'goods', 'centres', 'trend'];
+    public const REPORT_VIEWS       = ['distributions', 'goods', 'centres', 'trend', 'movement'];
     public const REPORT_GRANULARITY = ['day', 'week', 'month'];
     public const REPORT_PRESETS     = ['today', 'week', 'month', 'quarter', 'year', 'all', 'custom'];
 
@@ -353,36 +547,89 @@ class Relief
         return $this->pdo->query("SELECT * FROM relief_inventory ORDER BY item_name ASC")->fetchAll();
     }
 
-    public function createInventoryItem(array $data): int
+    public function createInventoryItem(array $data, ?int $userId = null): int
     {
-        $sql = "INSERT INTO relief_inventory (item_name, category, unit, quantity_available, reorder_level, created_at)
-                VALUES (:name, :cat, :unit, :qty, :reorder, NOW())";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            'name'    => $data['item_name'],
-            'cat'     => $data['category'],
-            'unit'    => $data['unit'],
-            'qty'     => $data['quantity_available'],
-            'reorder' => $data['reorder_level'],
-        ]);
-        return (int)$this->pdo->lastInsertId();
+        $this->pdo->beginTransaction();
+        try {
+            $sql = "INSERT INTO relief_inventory (item_name, category, unit, quantity_available, reorder_level, created_at)
+                    VALUES (:name, :cat, :unit, :qty, :reorder, NOW())";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                'name'    => $data['item_name'],
+                'cat'     => $data['category'],
+                'unit'    => $data['unit'],
+                'qty'     => $data['quantity_available'],
+                'reorder' => $data['reorder_level'],
+            ]);
+            $id = (int)$this->pdo->lastInsertId();
+
+            $this->recordStockMovement(
+                $id, 'Opening', (int)$data['quantity_available'], $userId, null,
+                'Item added to inventory.'
+            );
+
+            $this->pdo->commit();
+            return $id;
+        } catch (Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 
-    public function updateInventoryItem(int $id, array $data): bool
+    /**
+     * Editing an item can change its stock level, which used to overwrite the
+     * quantity with no record of who changed it or by how much. The difference
+     * is now logged as an Adjustment; edits that leave the quantity alone add
+     * no ledger row.
+     */
+    public function updateInventoryItem(int $id, array $data, ?int $userId = null): bool
     {
-        $sql = "UPDATE relief_inventory SET
-                    item_name = :name, category = :cat, unit = :unit,
-                    quantity_available = :qty, reorder_level = :reorder, updated_at = NOW()
-                WHERE id = :id";
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([
-            'name'    => $data['item_name'],
-            'cat'     => $data['category'],
-            'unit'    => $data['unit'],
-            'qty'     => $data['quantity_available'],
-            'reorder' => $data['reorder_level'],
-            'id'      => $id,
-        ]);
+        $this->pdo->beginTransaction();
+        try {
+            $before = $this->pdo->prepare("SELECT quantity_available FROM relief_inventory WHERE id = :id FOR UPDATE");
+            $before->execute(['id' => $id]);
+            $previous = $before->fetchColumn();
+
+            if ($previous === false) {
+                $this->pdo->rollBack();
+                return false;
+            }
+
+            $sql = "UPDATE relief_inventory SET
+                        item_name = :name, category = :cat, unit = :unit,
+                        quantity_available = :qty, reorder_level = :reorder, updated_at = NOW()
+                    WHERE id = :id";
+            $stmt = $this->pdo->prepare($sql);
+            $ok = $stmt->execute([
+                'name'    => $data['item_name'],
+                'cat'     => $data['category'],
+                'unit'    => $data['unit'],
+                'qty'     => $data['quantity_available'],
+                'reorder' => $data['reorder_level'],
+                'id'      => $id,
+            ]);
+
+            $delta = (int)$data['quantity_available'] - (int)$previous;
+            if ($ok && $delta !== 0) {
+                $this->recordStockMovement(
+                    $id,
+                    $delta > 0 ? 'Receipt' : 'Adjustment',
+                    $delta,
+                    $userId,
+                    null,
+                    $delta > 0
+                        ? 'Stock increased from ' . $previous . ' to ' . (int)$data['quantity_available'] . ' on the inventory screen.'
+                        : 'Stock reduced from ' . $previous . ' to ' . (int)$data['quantity_available'] . ' on the inventory screen.',
+                    $data['reference'] ?? null
+                );
+            }
+
+            $this->pdo->commit();
+            return $ok;
+        } catch (Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 
     public function deleteInventoryItem(int $id): bool
@@ -519,12 +766,14 @@ class Relief
 
             $referenceNo = generate_reference_number($this->pdo);
 
+            // Needed by the manifest title and by the ledger remarks below,
+            // so read once rather than only inside the manifest branch.
+            $center = $this->pdo->prepare("SELECT name FROM evacuation_centers WHERE id = :id");
+            $center->execute(['id' => $data['evacuation_center_id']]);
+            $centerName = $center->fetchColumn() ?: 'Evacuation Center';
+
             $documentId = null;
             if ($generateManifest && $documentModel) {
-                $center = $this->pdo->prepare("SELECT name FROM evacuation_centers WHERE id = :id");
-                $center->execute(['id' => $data['evacuation_center_id']]);
-                $centerName = $center->fetchColumn() ?: 'Evacuation Center';
-
                 $manifestDoc = $documentModel->create([
                     'title'                => "Relief Distribution Manifest — {$referenceNo} ({$centerName})",
                     'doc_type'             => 'Relief Manifest',
@@ -572,6 +821,10 @@ class Relief
                 }
                 $itemStmt->execute(['dist' => $distributionId, 'inv' => $item['inventory_id'], 'qty' => $qty]);
                 $deductStmt->execute(['qty' => $qty, 'qty2' => $qty, 'id' => $item['inventory_id']]);
+                $this->recordStockMovement(
+                    (int)$item['inventory_id'], 'Release', -$qty, $userId, $distributionId,
+                    'Released to ' . $centerName, $referenceNo
+                );
             }
 
             $this->pdo->commit();
@@ -597,7 +850,7 @@ class Relief
      *
      * @throws RuntimeException if reinstating would oversell current stock.
      */
-    public function updateDistributionStatus(int $id, string $status): bool
+    public function updateDistributionStatus(int $id, string $status, ?int $userId = null): bool
     {
         $valid = ['Draft', 'Pending Approval', 'Approved', 'Completed', 'Cancelled'];
         if (!in_array($status, $valid, true)) {
@@ -643,7 +896,7 @@ class Relief
      * 'issue' deducts (the event is live), 'return' credits back (cancelled).
      * Caller owns the transaction.
      */
-    private function moveDistributionStock(int $distributionId, string $direction): void
+    private function moveDistributionStock(int $distributionId, string $direction, ?int $userId = null): void
     {
         $stmt = $this->pdo->prepare(
             "SELECT di.inventory_id, di.quantity, ri.item_name, ri.quantity_available
@@ -678,12 +931,29 @@ class Relief
               WHERE id = :id"
         );
 
+        $reference = $this->pdo->prepare("SELECT reference_no FROM distributions WHERE id = :id");
+        $reference->execute(['id' => $distributionId]);
+        $referenceNo = (string)$reference->fetchColumn();
+
         foreach ($lines as $line) {
+            $qty = (int)$line['quantity'];
             $move->execute([
-                'qty'  => (int)$line['quantity'],
-                'qty2' => (int)$line['quantity'],
+                'qty'  => $qty,
+                'qty2' => $qty,
                 'id'   => (int)$line['inventory_id'],
             ]);
+
+            $this->recordStockMovement(
+                (int)$line['inventory_id'],
+                $direction === 'issue' ? 'Release' : 'Return',
+                $direction === 'issue' ? -$qty : $qty,
+                $userId,
+                $distributionId,
+                $direction === 'issue'
+                    ? 'Distribution reinstated after cancellation.'
+                    : 'Returned to stock — distribution cancelled.',
+                $referenceNo
+            );
         }
     }
 }

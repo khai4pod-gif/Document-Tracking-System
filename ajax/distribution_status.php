@@ -25,7 +25,7 @@ $pdo = Database::getConnection();
 $relief = new Relief($pdo);
 
 try {
-    $ok = $relief->updateDistributionStatus($id, $status);
+    $ok = $relief->updateDistributionStatus($id, $status, (int)current_user()['id']);
 } catch (RuntimeException $e) {
     // Reinstating a cancelled distribution can fail if the stock it needs has
     // since gone out on another event — that is a normal outcome, not a fault.
