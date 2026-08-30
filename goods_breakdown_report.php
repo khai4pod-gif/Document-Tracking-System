@@ -16,17 +16,10 @@ $relief = new Relief($pdo);
 $breakdown = $relief->getCategoryBreakdown();
 $stats     = $relief->getStats();
 
-// ASSUMPTION: Relief::getDistributionsByCategory() does not exist yet in the
-// class you've shown me. distributions.php confirms distributions only record
-// a beneficiary COUNT per event (via "Total Beneficiaries"), not named
-// individuals, and each event has multiple item rows. So this expects one row
-// per distributed item, joined back to its parent distribution event:
-// ['category', 'item_name', 'quantity', 'reference_no', 'center_name',
-//  'distribution_date', 'total_beneficiaries'].
-// Swap this for whatever your actual method/columns turn out to be.
-$distributionEvents = method_exists($relief, 'getDistributionsByCategory')
-    ? $relief->getDistributionsByCategory()
-    : [];
+// One row per distributed line item, joined back to its parent event.
+// Distributions record a beneficiary count per event rather than named
+// individuals, so the figures below are totals, not a register of people.
+$distributionEvents = $relief->getDistributionsByCategory();
 
 // Group by category so it lines up with the breakdown table above it.
 $eventsByCategory = [];
@@ -167,9 +160,7 @@ $generatedAt = date('F j, Y g:i A');
     <div class="section-title">Distribution Events by Category</div>
     <?php if (empty($distributionEvents)): ?>
       <p class="text-muted small">
-        No distribution event data available. This section expects
-        <code>Relief::getDistributionsByCategory()</code> — add that method
-        (or tell me your existing one) to populate it.
+        No goods have been distributed yet.
       </p>
     <?php else: foreach ($eventsByCategory as $category => $rows): ?>
       <div class="beneficiary-group">
