@@ -232,8 +232,30 @@ class Relief
      */
     public static function resolveReportDates(string $preset, ?string $from, ?string $to): array
     {
-        $valid = static fn(?string $d): ?string =>
-            ($d !== null && $d !== '' && DateTime::createFromFormat('Y-m-d', $d)) ? $d : null;
+        // createFromFormat is lenient — it rolls 2026-13-45 forward into
+        // 2027-02-14 and reports success, so a check that only asks whether it
+        // parsed would pass the original string straight through to SQL, where
+        // MySQL matches nothing and the report comes back mysteriously empty.
+        // Requiring the parsed date to round-trip rejects anything that was
+        // not already a real calendar date.
+        $valid = static function (?string $d): ?string {
+            if ($d === null || $d === '') {
+                return null;
+            }
+            $parsed = DateTime::createFromFormat('Y-m-d', $d);
+            return ($parsed && $parsed->format('Y-m-d') === $d) ? $d : null;
+        };
+
+        if ($preset === 'custom') {
+            $from = $valid($from);
+            $to   = $valid($to);
+            // A range entered back to front is a slip, not a request for
+            // nothing; read it the way it was obviously meant.
+            if ($from !== null && $to !== null && $from > $to) {
+                [$from, $to] = [$to, $from];
+            }
+            return [$from, $to];
+        }
 
         return match ($preset) {
             'today'   => [date('Y-m-d'), date('Y-m-d')],
@@ -244,8 +266,7 @@ class Relief
                 date('Y-m-t',  mktime(0, 0, 0, (intdiv((int)date('n') - 1, 3) * 3) + 3, 1)),
             ],
             'year'    => [date('Y-01-01'), date('Y-12-31')],
-            'custom'  => [$valid($from), $valid($to)],
-            default   => [null, null],   // 'all'
+            default   => [null, null],   // 'all'; 'custom' returned above
         };
     }
 
