@@ -68,9 +68,9 @@ abstract class TestCase extends BaseTestCase
         $pdo = self::$pdo;
         $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
         $tables = [
-            'notifications', 'document_logs', 'document_routes', 'document_attachments',
+            'notifications', 'document_logs', 'document_routes', 'document_attachments', 'document_links',
             'distribution_items', 'distributions', 'documents',
-            'relief_inventory', 'evacuation_centers',
+            'relief_stock_movements', 'relief_inventory', 'evacuation_centers',
             'login_otps', 'login_attempts', 'users', 'departments',
         ];
         foreach ($tables as $table) {

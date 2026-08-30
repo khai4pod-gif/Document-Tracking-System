@@ -36,6 +36,27 @@ final class ReliefTest extends TestCase
         return $stmt->fetch();
     }
 
+    /** Ledger rows for one item, oldest first — the order they were written in. */
+    private function movements(int $inventoryId): array
+    {
+        $stmt = $this->pdo()->prepare(
+            'SELECT * FROM relief_stock_movements WHERE inventory_id = :id ORDER BY id ASC'
+        );
+        $stmt->execute(['id' => $inventoryId]);
+        return $stmt->fetchAll();
+    }
+
+    private function baseInventoryData(array $overrides = []): array
+    {
+        return array_merge([
+            'item_name'          => 'Emergency Blankets',
+            'category'           => 'Shelter',
+            'unit'               => 'piece',
+            'quantity_available' => 200,
+            'reorder_level'      => 20,
+        ], $overrides);
+    }
+
     public function testCreateDistributionDeductsStockAndRecordsLineItems(): void
     {
         $before = $this->stock($this->itemFood);
@@ -253,5 +274,120 @@ final class ReliefTest extends TestCase
             $this->assertSame('Cancelled', $this->relief->findDistribution($distA['id'])['status']);
             $this->assertSame(0, (int)$this->stock($this->itemFood)['quantity_available'], 'A refused reinstate must not partially deduct.');
         }
+    }
+
+    public function testCreateInventoryItemWritesAnOpeningLedgerEntry(): void
+    {
+        $id = $this->relief->createInventoryItem($this->baseInventoryData(['quantity_available' => 200]), $this->logistics);
+
+        $rows = $this->movements($id);
+        $this->assertCount(1, $rows);
+        $this->assertSame('Opening', $rows[0]['movement_type']);
+        $this->assertSame(200, (int)$rows[0]['quantity']);
+        $this->assertSame(200, (int)$rows[0]['balance_after']);
+    }
+
+    public function testUpdateInventoryItemWritesReceiptWhenQuantityIncreases(): void
+    {
+        $id = $this->relief->createInventoryItem($this->baseInventoryData(['quantity_available' => 200]), $this->logistics);
+
+        $this->assertTrue($this->relief->updateInventoryItem(
+            $id, $this->baseInventoryData(['quantity_available' => 250]), $this->logistics
+        ));
+
+        $rows = $this->movements($id);
+        $this->assertCount(2, $rows); // Opening, then Receipt
+        $this->assertSame('Receipt', $rows[1]['movement_type']);
+        $this->assertSame(50, (int)$rows[1]['quantity']);
+        $this->assertSame(250, (int)$rows[1]['balance_after']);
+    }
+
+    public function testUpdateInventoryItemWritesAdjustmentWhenQuantityDecreases(): void
+    {
+        $id = $this->relief->createInventoryItem($this->baseInventoryData(['quantity_available' => 200]), $this->logistics);
+
+        $this->relief->updateInventoryItem(
+            $id, $this->baseInventoryData(['quantity_available' => 150]), $this->logistics
+        );
+
+        $rows = $this->movements($id);
+        $this->assertCount(2, $rows);
+        $this->assertSame('Adjustment', $rows[1]['movement_type']);
+        $this->assertSame(-50, (int)$rows[1]['quantity']);
+        $this->assertSame(150, (int)$rows[1]['balance_after']);
+    }
+
+    public function testUpdateInventoryItemWritesNoLedgerRowWhenQuantityIsUnchanged(): void
+    {
+        $id = $this->relief->createInventoryItem($this->baseInventoryData(['quantity_available' => 200]), $this->logistics);
+
+        // Only the name changes; quantity_available is passed through as-is.
+        $this->relief->updateInventoryItem(
+            $id, $this->baseInventoryData(['quantity_available' => 200, 'item_name' => 'Renamed']), $this->logistics
+        );
+
+        $this->assertCount(1, $this->movements($id), 'An edit that leaves the quantity alone must add no ledger row.');
+    }
+
+    public function testUpdateInventoryItemReturnsFalseForANonexistentItem(): void
+    {
+        $this->assertFalse($this->relief->updateInventoryItem(999999, $this->baseInventoryData()));
+    }
+
+    public function testCreateDistributionWritesAReleaseEntryPerLineItem(): void
+    {
+        $result = $this->relief->createDistribution(
+            $this->baseDistributionData(['items' => [
+                ['inventory_id' => $this->itemFood, 'quantity' => 10],
+                ['inventory_id' => $this->itemWater, 'quantity' => 5],
+            ]]),
+            $this->logistics, false, null
+        );
+
+        $foodRows = $this->movements($this->itemFood);
+        $this->assertCount(1, $foodRows);
+        $this->assertSame('Release', $foodRows[0]['movement_type']);
+        $this->assertSame(-10, (int)$foodRows[0]['quantity']);
+        $this->assertSame(90, (int)$foodRows[0]['balance_after']);
+        $this->assertSame($result['id'], (int)$foodRows[0]['distribution_id']);
+
+        $waterRows = $this->movements($this->itemWater);
+        $this->assertCount(1, $waterRows);
+        $this->assertSame(-5, (int)$waterRows[0]['quantity']);
+        $this->assertSame(45, (int)$waterRows[0]['balance_after']);
+    }
+
+    public function testCancellingAndReinstatingWriteMatchingLedgerEntries(): void
+    {
+        $result = $this->relief->createDistribution(
+            $this->baseDistributionData(['items' => [['inventory_id' => $this->itemFood, 'quantity' => 10]]]),
+            $this->logistics, false, null
+        );
+
+        $this->relief->updateDistributionStatus($result['id'], 'Cancelled', $this->admin);
+        $rows = $this->movements($this->itemFood);
+        $this->assertCount(2, $rows); // Release, then Return
+        $this->assertSame('Return', $rows[1]['movement_type']);
+        $this->assertSame(10, (int)$rows[1]['quantity']);
+        $this->assertSame(100, (int)$rows[1]['balance_after']);
+        $this->assertSame($result['id'], (int)$rows[1]['distribution_id']);
+
+        $this->relief->updateDistributionStatus($result['id'], 'Approved', $this->admin);
+        $rows = $this->movements($this->itemFood);
+        $this->assertCount(3, $rows); // + Release again
+        $this->assertSame('Release', $rows[2]['movement_type']);
+        $this->assertSame(-10, (int)$rows[2]['quantity']);
+        $this->assertSame(90, (int)$rows[2]['balance_after']);
+    }
+
+    public function testRepeatingACancelledStatusWritesNoLedgerRow(): void
+    {
+        $result = $this->relief->createDistribution($this->baseDistributionData(), $this->logistics, false, null);
+        $this->relief->updateDistributionStatus($result['id'], 'Cancelled', $this->admin);
+        $countAfterFirstCancel = count($this->movements($this->itemFood));
+
+        $this->relief->updateDistributionStatus($result['id'], 'Cancelled', $this->admin);
+
+        $this->assertCount($countAfterFirstCancel, $this->movements($this->itemFood));
     }
 }
