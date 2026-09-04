@@ -128,6 +128,27 @@ async function confirmWithRemarks({
   return res.isConfirmed ? res.value : null;
 }
 
+/* ---------------- Keep tables aligned on zoom / resize ---------------- */
+
+/**
+ * DataTables measures column widths once when it initialises and writes them
+ * as inline styles. Browser zoom changes the CSS viewport without re-running
+ * that measurement, so columns drift out of step with their headers until the
+ * page is reloaded. Recomputing on resize keeps every table on the page
+ * aligned; zoom fires resize, so this covers both.
+ *
+ * Debounced because dragging a window edge fires resize continuously and each
+ * adjust re-measures every column.
+ */
+let dataTableAdjustTimer = null;
+window.addEventListener('resize', () => {
+  if (typeof $ === 'undefined' || !$.fn || !$.fn.dataTable) return;
+  clearTimeout(dataTableAdjustTimer);
+  dataTableAdjustTimer = setTimeout(() => {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  }, 150);
+});
+
 /* ---------------- Sidebar toggle ---------------- */
 document.addEventListener('DOMContentLoaded', () => {
   const body = document.body;

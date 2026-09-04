@@ -60,6 +60,11 @@ $generatedAt = date('F j, Y g:i A');
   .summary-box .label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: .03em; }
   .section-title { font-weight: 700; font-size: 1.05rem; margin: 1.75rem 0 0.75rem; }
   table.report-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  /* Scroll the table rather than the page when the viewport is narrow —
+     which is what high browser zoom produces. Print gets the full width back,
+     since there is nothing to scroll on paper. */
+  .report-table-scroll { overflow-x: auto; }
+  @media print { .report-table-scroll { overflow-x: visible; } }
   table.report-table th { text-align: left; border-bottom: 2px solid #dee2e6; padding: 0.5rem 0.6rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .02em; color: #6c757d; }
   table.report-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid #eef0f3; vertical-align: middle; }
   .cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
@@ -120,6 +125,7 @@ $generatedAt = date('F j, Y g:i A');
     <div class="chart-wrap"><canvas id="reportChart"></canvas></div>
 
     <div class="section-title">Full Breakdown</div>
+    <div class="report-table-scroll">
     <table class="report-table">
       <thead>
         <tr>
@@ -156,6 +162,7 @@ $generatedAt = date('F j, Y g:i A');
       </tfoot>
       <?php endif; ?>
     </table>
+    </div>
 
     <div class="section-title">Distribution Events by Category</div>
     <?php if (empty($distributionEvents)): ?>
@@ -171,6 +178,7 @@ $generatedAt = date('F j, Y g:i A');
             <?= number_format(array_sum(array_column($rows, 'total_beneficiaries'))) ?> beneficiaries)
           </span>
         </div>
+        <div class="report-table-scroll">
         <table class="report-table beneficiary-table">
           <thead>
             <tr>
@@ -195,6 +203,7 @@ $generatedAt = date('F j, Y g:i A');
             <?php endforeach; ?>
           </tbody>
         </table>
+        </div>
       </div>
     <?php endforeach; endif; ?>
   </div>

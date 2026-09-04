@@ -120,7 +120,9 @@ input,button,select,optgroup,textarea{font-family:inherit;}
   font-size:.62rem;font-weight:700;min-width:16px;height:16px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;padding:0 4px;
 }
-.notif-menu{width:320px;border-radius:12px;overflow:hidden;border:1px solid var(--border);box-shadow:0 12px 30px rgba(0,0,0,.12);}
+/* max-width keeps the dropdown inside a narrow viewport, which is what high
+   browser zoom produces on a normal monitor. */
+.notif-menu{width:320px;max-width:calc(100vw - 24px);border-radius:12px;overflow:hidden;border:1px solid var(--border);box-shadow:0 12px 30px rgba(0,0,0,.12);}
 .notif-header{padding:12px 16px;font-weight:700;font-size:.85rem;background:var(--paper);border-bottom:1px solid var(--border);}
 .notif-item{display:block;padding:10px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:#1f2733;}
 .notif-item:last-child{border-bottom:none;}
@@ -190,7 +192,9 @@ a.perf-sub--link:focus-visible{outline:2px solid var(--accent);outline-offset:3p
 .perf-sub b{display:block;font-size:1.05rem;color:var(--navy-900);font-weight:800;margin-top:2px;}
 .perf-accent{height:4px;width:100%;}
 
-.perf-gauge{position:relative;width:180px;height:180px;margin:0 auto;}
+/* Square, but never wider than the column holding it — at high zoom the
+   card narrows past 180px and a fixed width would push out of its card. */
+.perf-gauge{position:relative;width:180px;max-width:100%;aspect-ratio:1;height:auto;margin:0 auto;}
 .perf-gauge canvas{width:100%!important;height:100%!important;}
 .perf-gauge-label{
   position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
