@@ -71,7 +71,7 @@ abstract class TestCase extends BaseTestCase
             'notifications', 'document_logs', 'document_routes', 'document_attachments', 'document_links',
             'distribution_items', 'distributions', 'documents',
             'relief_stock_movements', 'relief_inventory', 'evacuation_centers',
-            'login_otps', 'login_attempts', 'users', 'departments',
+            'password_resets', 'login_otps', 'login_attempts', 'users', 'departments',
         ];
         foreach ($tables as $table) {
             $pdo->exec("TRUNCATE TABLE `{$table}`");

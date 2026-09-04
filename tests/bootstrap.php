@@ -28,3 +28,11 @@ if (!defined('APP_TIMEZONE')) {
     define('APP_TIMEZONE', 'Asia/Manila');
 }
 date_default_timezone_set(APP_TIMEZONE);
+
+// PasswordReset reads these directly (see classes/PasswordReset.php).
+if (!defined('PASSWORD_RESET_TTL_SECONDS')) {
+    define('PASSWORD_RESET_TTL_SECONDS', 30 * 60);
+}
+if (!defined('PASSWORD_RESET_COOLDOWN')) {
+    define('PASSWORD_RESET_COOLDOWN', 120);
+}
