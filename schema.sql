@@ -71,6 +71,26 @@ CREATE TABLE `login_otps` (
   INDEX `idx_login_otps_active` (`user_id`, `consumed_at`, `expires_at`)
 ) ENGINE=InnoDB;
 
+-- Self-service password reset links.
+--
+-- token_hash is a SHA-256 of a 32-byte random token, not a bcrypt hash: the
+-- token has to be looked up by value, which a salted hash cannot do, and a
+-- 256-bit random secret has nothing to brute force. Only the hash is stored,
+-- so a copy of this table cannot be used to reset anyone's password.
+CREATE TABLE `password_resets` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL,
+  `token_hash` CHAR(64) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `consumed_at` DATETIME DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_password_resets_token` (`token_hash`),
+  CONSTRAINT `fk_password_resets_user` FOREIGN KEY (`user_id`)
+      REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  INDEX `idx_password_resets_active` (`user_id`, `consumed_at`, `expires_at`)
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------
 -- 3. DOCUMENT TRACKING SYSTEM (DTS)
 -- ---------------------------------------------------------------------

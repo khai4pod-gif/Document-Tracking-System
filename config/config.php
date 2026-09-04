@@ -151,6 +151,13 @@ define('OTP_MAX_ATTEMPTS', 5);       // wrong guesses before the code dies
 define('OTP_RESEND_COOLDOWN', 60);   // seconds between resend requests
 define('OTP_PENDING_TTL', 15 * 60);  // how long the half-authenticated state lives
 
+// Self-service password reset. The window is deliberately short: the link is
+// a bearer token sitting in an inbox, and anything that reaches the mailbox
+// can use it.
+define('PASSWORD_RESET_TTL_SECONDS', 30 * 60); // link validity window
+define('PASSWORD_RESET_COOLDOWN', 120);        // seconds between requests per account
+define('PASSWORD_MIN_LENGTH', 8);              // matches the admin-set minimum
+
 // ---------------------------------------------------------------------
 // Autoload core classes (simple manual autoloader — no Composer needed).
 // ---------------------------------------------------------------------

@@ -461,3 +461,66 @@ function send_login_otp(array $user, string $code): void
         $text
     );
 }
+
+/**
+ * Emails a single-use password reset link.
+ *
+ * Throws on delivery failure, like send_login_otp(). The caller reports a
+ * generic outcome either way — whether an address is registered is not
+ * something an unauthenticated visitor should be able to discover.
+ */
+function send_password_reset(array $user, string $token): void
+{
+    $minutes = (int)round(PASSWORD_RESET_TTL_SECONDS / 60);
+    $appName = APP_SHORT_NAME;
+    $link    = app_url('reset_password.php?token=' . urlencode($token));
+
+    $text = "Hello {$user['full_name']},\r\n\r\n"
+        . "We received a request to reset your password. Open the link below to choose a new one:\r\n\r\n"
+        . "{$link}\r\n\r\n"
+        . "The link expires in {$minutes} minutes and can only be used once.\r\n\r\n"
+        . "If you did not request this, you can ignore this message — your password stays as it is.\r\n\r\n"
+        . "-- {$appName}";
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e;">'
+        . '<div style="background:#0b2e5e;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;">'
+        . '<div style="font-size:16px;font-weight:700;">' . e($appName) . '</div>'
+        . '<div style="font-size:12px;opacity:.8;">Password reset</div>'
+        . '</div>'
+        . '<div style="border:1px solid #e3e3e8;border-top:0;border-radius:0 0 10px 10px;padding:24px;">'
+        . '<p style="margin:0 0 16px;">Hello <strong>' . e($user['full_name']) . '</strong>,</p>'
+        . '<p style="margin:0 0 18px;">We received a request to reset your password. '
+        . 'Choose a new one using the button below.</p>'
+        . '<p style="text-align:center;margin:0 0 18px;">'
+        . '<a href="' . e($link) . '" style="display:inline-block;background:#0b2e5e;color:#fff;'
+        . 'text-decoration:none;font-weight:700;padding:12px 26px;border-radius:8px;">Reset my password</a>'
+        . '</p>'
+        . '<p style="margin:0 0 12px;font-size:12px;color:#586173;word-break:break-all;">'
+        . 'If the button does not work, paste this into your browser:<br>' . e($link) . '</p>'
+        . '<p style="margin:0 0 12px;font-size:13px;color:#586173;">'
+        . 'The link expires in ' . $minutes . ' minutes and can only be used once.</p>'
+        . '<p style="margin:0;font-size:13px;color:#586173;">'
+        . 'If you did not request this, you can ignore this message — your password stays as it is.</p>'
+        . '</div></div>';
+
+    (new Mailer())->send(
+        (string)$user['email'],
+        (string)$user['full_name'],
+        $appName . ' password reset',
+        $html,
+        $text
+    );
+}
+
+/**
+ * Absolute URL for a path in this application, for use in emails where a
+ * relative link is meaningless. Falls back to the configured mail host name
+ * when there is no request context, such as a CLI run.
+ */
+function app_url(string $path): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? (defined('APP_HOST') ? APP_HOST : 'localhost');
+
+    return $scheme . '://' . $host . BASE_URL . ltrim($path, '/');
+}

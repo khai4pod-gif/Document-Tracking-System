@@ -267,11 +267,16 @@ $pageTitle = 'Login';
         </div>
       </div>
 
-      <div class="form-check mb-3">
-        <input class="form-check-input" type="checkbox" id="remember" name="remember">
-        <label class="form-check-label" for="remember" style="font-size:.85rem;color:#586173;">
-          Keep me signed in on this device
-        </label>
+      <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+        <div class="form-check mb-0">
+          <input class="form-check-input" type="checkbox" id="remember" name="remember">
+          <label class="form-check-label" for="remember" style="font-size:.85rem;color:#586173;">
+            Keep me signed in on this device
+          </label>
+        </div>
+        <a href="forgot_password.php" style="font-size:.85rem;color:var(--navy-700);text-decoration:none;font-weight:600;">
+          Forgot password?
+        </a>
       </div>
 
       <button type="submit" class="btn btn-login btn-primary w-100 text-white">Sign In</button>
