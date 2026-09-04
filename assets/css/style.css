@@ -20,6 +20,15 @@ body{
   color:#1f2733;
   margin:0;
 }
+/* Form controls do not inherit font-family from body — browsers substitute
+   their own UI font. Bootstrap's reboot normally covers this, but stating it
+   here keeps the interface on one typeface even if that stylesheet is slow
+   to arrive from its CDN, and it reaches the controls DataTables injects. */
+input,button,select,optgroup,textarea{font-family:inherit;}
+/* DataTables chrome: search box, page-length select, info line, pagination. */
+.dataTables_wrapper,.dataTables_wrapper input,.dataTables_wrapper select,
+.dataTables_filter,.dataTables_info,.dataTables_length,.dataTables_paginate,
+.dt-buttons,.dt-button{font-family:inherit;}
 
 /* ---------- App Shell ---------- */
 .app-shell{display:flex;min-height:100vh;}
@@ -222,7 +231,15 @@ a.perf-sub--link:focus-visible{outline:2px solid var(--accent);outline-offset:3p
 .section-heading{font-weight:800;color:var(--navy-900);font-size:1.25rem;margin-bottom:2px;}
 .section-sub{color:#7c8698;font-size:.88rem;}
 .tracking-chip{
-  font-family:monospace;background:var(--paper);border:1px solid var(--border);
+  /* One typeface across the interface. Tracking numbers used to switch to
+     generic monospace, which resolves to whatever the browser picks — often
+     Courier New on Windows — and read as a different, older design beside
+     everything else. Tabular figures keep the codes aligned in a column and
+     the letter-spacing keeps them scannable, without a second family. */
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.03em;
+  font-weight:500;
+  background:var(--paper);border:1px solid var(--border);
   padding:2px 8px;border-radius:6px;font-size:.78rem;color:var(--navy-800);
 }
 /* ---------- Barcode Scanner ---------- */
