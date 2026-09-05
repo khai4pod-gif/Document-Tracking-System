@@ -291,3 +291,43 @@ a.perf-sub--link:focus-visible{outline:2px solid var(--accent);outline-offset:3p
   margin-top:.35rem;font-size:.78rem;color:#7b8593;
 }
 .swal-remarks__count{white-space:nowrap;}
+
+/* ---------- Phone and tablet ----------
+   The layout already reflows (the sidebar goes off-canvas below 992px and
+   tables scroll inside their card). These are the adjustments that only
+   matter once a finger is the pointer rather than a mouse. */
+
+/* Nothing should push the page sideways on a narrow screen; a stray wide
+   element becomes a whole-page horizontal scroll, which on a phone makes the
+   layout feel broken even when only one element is at fault. */
+html, body { max-width: 100%; overflow-x: hidden; }
+.app-main, .app-content { min-width: 0; }
+
+@media (max-width: 767.98px) {
+  .topbar { padding: 0 14px; gap: 10px; }
+  .app-content { padding: 14px; }
+  .section-heading { font-size: 1.1rem; }
+
+  /* Modals use the full width rather than a narrow column with wasted margin. */
+  .modal-dialog { margin: .5rem; }
+
+  /* Long report and document tables are unreadable shrunk to fit; let them
+     scroll inside their card and keep the type legible. */
+  .table-responsive table { font-size: .85rem; }
+
+  /* Stat tiles stack rather than squeezing four across. */
+  .kpi-card { padding: 14px; gap: 12px; }
+  .kpi-value { font-size: 1.35rem; }
+}
+
+/* Coarse pointer: fingers need a larger target than a cursor does. Applied by
+   input type rather than by width, so a touchscreen laptop gets it too. */
+@media (pointer: coarse) {
+  .nav-link, .dropdown-item { padding-top: 12px; padding-bottom: 12px; }
+  .perf-tab { padding: 10px 16px; font-size: .85rem; }
+  .btn-sm, .btn-icon { min-height: 40px; min-width: 40px; }
+  .form-control, .form-select { min-height: 44px; font-size: 16px; }
+  .dataTables_paginate .paginate_button { padding: 10px 14px !important; }
+  .dt-button { min-height: 40px; }
+  .form-check-input { width: 1.15em; height: 1.15em; }
+}

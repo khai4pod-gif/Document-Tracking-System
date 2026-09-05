@@ -27,9 +27,20 @@ $__notifications = $__notifListStmt->fetchAll();
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
 <title><?= e($pageTitle ?? 'Dashboard') ?> · <?= e(APP_SHORT_NAME) ?></title>
+
+<!-- Installable on a phone: "Add to Home Screen" opens it full-screen without
+     browser chrome, which matters on a small display. theme-color tints the
+     status bar so it does not read as a stray browser tab. -->
+<link rel="manifest" href="<?= e(BASE_URL) ?>manifest.json">
+<meta name="theme-color" content="#0b2e5e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DTS">
+<link rel="apple-touch-icon" href="<?= e(asset('assets/img/dswd-logo.png')) ?>">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">

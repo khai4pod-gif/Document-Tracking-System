@@ -1,0 +1,19 @@
+{
+  "name": "DSWD Document Tracking & Relief Distribution",
+  "short_name": "DTS",
+  "description": "Route official documents and manage disaster relief distribution.",
+  "start_url": "home.php",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b2e5e",
+  "theme_color": "#0b2e5e",
+  "icons": [
+    {
+      "src": "assets/img/dswd-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
