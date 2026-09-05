@@ -1,0 +1,4 @@
+# This deployment carries live personnel and beneficiary records.
+# It must never appear in a search index.
+User-agent: *
+Disallow: /
