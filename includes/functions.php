@@ -513,6 +513,85 @@ function send_password_reset(array $user, string $token): void
 }
 
 /**
+ * Emails the recipient that a document has been routed to them.
+ *
+ * Throws on delivery failure so the caller can log it. Unlike the sign-in
+ * passcode, nothing depends on this arriving — the document has already moved
+ * and the in-app notification is written — so callers report success either
+ * way rather than failing the routing.
+ *
+ * @param array  $recipient Row with full_name, email and department_name.
+ * @param array  $document  Row from Document::find().
+ * @param string $senderName Who routed it.
+ * @param array  $route     action_required and remarks for this hop.
+ */
+function send_route_notification(array $recipient, array $document, string $senderName, array $route): void
+{
+    $appName  = APP_SHORT_NAME;
+    $tracking = (string)$document['tracking_number'];
+    $title    = (string)$document['title'];
+    $action   = trim((string)($route['action_required'] ?? '')) ?: 'For appropriate action';
+    $remarks  = trim((string)($route['remarks'] ?? ''));
+    $due      = !empty($document['due_date'])
+        ? date('F j, Y', strtotime((string)$document['due_date']))
+        : 'No deadline set';
+    $link     = app_url('document_view.php?id=' . (int)$document['id']);
+
+    $text = "Hello {$recipient['full_name']},\r\n\r\n"
+        . "{$senderName} has routed a document to you.\r\n\r\n"
+        . "Document : {$title}\r\n"
+        . "Reference: {$tracking}\r\n"
+        . "Action   : {$action}\r\n"
+        . "Priority : {$document['priority']}\r\n"
+        . "Due      : {$due}\r\n"
+        . ($remarks !== '' ? "Remarks  : {$remarks}\r\n" : '')
+        . "\r\nOpen it here:\r\n{$link}\r\n\r\n"
+        . "Please acknowledge receipt in the system so the sender can see it reached you.\r\n\r\n"
+        . "-- {$appName}";
+
+    $row = static fn(string $label, string $value): string =>
+        '<tr><td style="padding:6px 12px 6px 0;color:#586173;font-size:13px;white-space:nowrap;">'
+        . e($label) . '</td><td style="padding:6px 0;font-size:13px;font-weight:600;">'
+        . e($value) . '</td></tr>';
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">'
+        . '<div style="background:#0b2e5e;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;">'
+        . '<div style="font-size:16px;font-weight:700;">' . e($appName) . '</div>'
+        . '<div style="font-size:12px;opacity:.8;">Document routed to you</div>'
+        . '</div>'
+        . '<div style="border:1px solid #e3e3e8;border-top:0;border-radius:0 0 10px 10px;padding:24px;">'
+        . '<p style="margin:0 0 16px;">Hello <strong>' . e($recipient['full_name']) . '</strong>,</p>'
+        . '<p style="margin:0 0 18px;"><strong>' . e($senderName) . '</strong> has routed a document to you'
+        . (!empty($recipient['department_name']) ? ' at ' . e($recipient['department_name']) : '') . '.</p>'
+        . '<div style="background:#f5f7fa;border:1px solid #e3e3e8;border-radius:8px;padding:14px 16px;margin:0 0 18px;">'
+        . '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">' . e($title) . '</div>'
+        . '<table style="border-collapse:collapse;">'
+        . $row('Reference', $tracking)
+        . $row('Action required', $action)
+        . $row('Priority', (string)$document['priority'])
+        . $row('Due', $due)
+        . ($remarks !== '' ? $row('Remarks', $remarks) : '')
+        . '</table></div>'
+        . '<p style="text-align:center;margin:0 0 18px;">'
+        . '<a href="' . e($link) . '" style="display:inline-block;background:#0b2e5e;color:#fff;'
+        . 'text-decoration:none;font-weight:700;padding:12px 26px;border-radius:8px;">Open the document</a>'
+        . '</p>'
+        . '<p style="margin:0 0 12px;font-size:12px;color:#586173;word-break:break-all;">'
+        . 'If the button does not work, paste this into your browser:<br>' . e($link) . '</p>'
+        . '<p style="margin:0;font-size:13px;color:#586173;">'
+        . 'Please acknowledge receipt in the system so the sender can see it reached you.</p>'
+        . '</div></div>';
+
+    (new Mailer())->send(
+        (string)$recipient['email'],
+        (string)$recipient['full_name'],
+        '[' . $tracking . '] ' . $title,
+        $html,
+        $text
+    );
+}
+
+/**
  * Absolute URL for a path in this application, for use in emails where a
  * relative link is meaningless. Falls back to the configured mail host name
  * when there is no request context, such as a CLI run.

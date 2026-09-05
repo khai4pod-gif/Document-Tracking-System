@@ -158,6 +158,11 @@ define('PASSWORD_RESET_TTL_SECONDS', 30 * 60); // link validity window
 define('PASSWORD_RESET_COOLDOWN', 120);        // seconds between requests per account
 define('PASSWORD_MIN_LENGTH', 8);              // matches the admin-set minimum
 
+// Email the recipient when a document is routed to them, alongside the in-app
+// notification. Set false to fall back to the bell alone — routing itself is
+// unaffected either way, since the mail is sent after the record is committed.
+define('MAIL_ON_ROUTE', true);
+
 // ---------------------------------------------------------------------
 // Autoload core classes (simple manual autoloader — no Composer needed).
 // ---------------------------------------------------------------------

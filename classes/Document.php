@@ -975,11 +975,66 @@ class Document
             ]);
 
             $this->pdo->commit();
+
+            // Mailed after the commit, never inside it. The document has
+            // already moved and the in-app notification is written, so a mail
+            // outage must not roll that back — the recipient would simply not
+            // see it in their bell. The login passcode fails closed for the
+            // opposite reason: there, an undelivered message means there is
+            // no second factor at all.
+            $this->emailRouteRecipient($documentId, (int)$data['to_user_id'], $fromUserId, $data);
+
             return true;
         } catch (Throwable $e) {
             $this->pdo->rollBack();
             error_log('[ROUTE ERROR] ' . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Tells the recipient by email that a document is waiting for them.
+     *
+     * Deliberately swallows its own failures: routing has already succeeded
+     * by the time this runs, and the caller's boolean answers "did the
+     * document move", which it did. Problems are logged instead.
+     */
+    private function emailRouteRecipient(int $documentId, int $toUserId, int $fromUserId, array $data): void
+    {
+        if (!MAIL_ON_ROUTE) {
+            return;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT u.full_name, u.email, d.name AS department_name
+                   FROM users u
+                   LEFT JOIN departments d ON d.id = u.department_id
+                  WHERE u.id = :id AND u.is_active = 1
+                  LIMIT 1"
+            );
+            $stmt->execute(['id' => $toUserId]);
+            $recipient = $stmt->fetch();
+
+            if (!$recipient || empty($recipient['email'])) {
+                return;   // Nothing to send to; the bell notification stands.
+            }
+
+            $senderStmt = $this->pdo->prepare("SELECT full_name FROM users WHERE id = :id LIMIT 1");
+            $senderStmt->execute(['id' => $fromUserId]);
+            $senderName = (string)($senderStmt->fetchColumn() ?: 'A colleague');
+
+            $document = $this->find($documentId);
+            if (!$document) {
+                return;
+            }
+
+            send_route_notification($recipient, $document, $senderName, [
+                'action_required' => (string)($data['action_required'] ?? ''),
+                'remarks'         => (string)($data['remarks'] ?? ''),
+            ]);
+        } catch (Throwable $e) {
+            error_log('[ROUTE MAIL ERROR] document ' . $documentId . ': ' . $e->getMessage());
         }
     }
 
