@@ -785,13 +785,48 @@ class Relief
                 }
             }
 
-            $referenceNo = generate_reference_number($this->pdo);
-
             // Needed by the manifest title and by the ledger remarks below,
             // so read once rather than only inside the manifest branch.
             $center = $this->pdo->prepare("SELECT name FROM evacuation_centers WHERE id = :id");
             $center->execute(['id' => $data['evacuation_center_id']]);
             $centerName = $center->fetchColumn() ?: 'Evacuation Center';
+
+            // The distribution is written first so its reference number is
+            // settled before anything quotes it. Like tracking numbers, the
+            // reference is read from the table and written back, so two
+            // people saving at once are handed the same one and the second
+            // insert hits the UNIQUE index; taking the next one and trying
+            // again costs a query in the rare case. The manifest is created
+            // afterwards and linked back, so its title can never quote a
+            // reference the distribution did not keep.
+            $distStmt = $this->pdo->prepare(
+                "INSERT INTO distributions
+                    (reference_no, evacuation_center_id, document_id, distributed_by,
+                     distribution_date, total_beneficiaries, status, remarks, created_at)
+                 VALUES
+                    (:ref, :center, NULL, :user, :date, :beneficiaries, :status, :remarks, NOW())"
+            );
+
+            for ($attempt = 1; ; $attempt++) {
+                $referenceNo = generate_reference_number($this->pdo);
+                try {
+                    $distStmt->execute([
+                        'ref'          => $referenceNo,
+                        'center'       => $data['evacuation_center_id'],
+                        'user'         => $userId,
+                        'date'         => $data['distribution_date'],
+                        'beneficiaries'=> $data['total_beneficiaries'],
+                        'status'       => $generateManifest ? 'Pending Approval' : 'Completed',
+                        'remarks'      => $data['remarks'] ?: null,
+                    ]);
+                    break;
+                } catch (PDOException $e) {
+                    if (!Document::isDuplicateKey($e) || $attempt >= 5) {
+                        throw $e;
+                    }
+                }
+            }
+            $distributionId = (int)$this->pdo->lastInsertId();
 
             $documentId = null;
             if ($generateManifest && $documentModel) {
@@ -804,26 +839,10 @@ class Relief
                     'origin_department_id' => null,
                 ], $userId);
                 $documentId = $manifestDoc['id'];
-            }
 
-            $distStmt = $this->pdo->prepare(
-                "INSERT INTO distributions
-                    (reference_no, evacuation_center_id, document_id, distributed_by,
-                     distribution_date, total_beneficiaries, status, remarks, created_at)
-                 VALUES
-                    (:ref, :center, :doc, :user, :date, :beneficiaries, :status, :remarks, NOW())"
-            );
-            $distStmt->execute([
-                'ref'          => $referenceNo,
-                'center'       => $data['evacuation_center_id'],
-                'doc'          => $documentId,
-                'user'         => $userId,
-                'date'         => $data['distribution_date'],
-                'beneficiaries'=> $data['total_beneficiaries'],
-                'status'       => $generateManifest ? 'Pending Approval' : 'Completed',
-                'remarks'      => $data['remarks'] ?: null,
-            ]);
-            $distributionId = (int)$this->pdo->lastInsertId();
+                $this->pdo->prepare("UPDATE distributions SET document_id = :doc WHERE id = :id")
+                    ->execute(['doc' => $documentId, 'id' => $distributionId]);
+            }
 
             $itemStmt = $this->pdo->prepare(
                 "INSERT INTO distribution_items (distribution_id, inventory_id, quantity) VALUES (:dist, :inv, :qty)"

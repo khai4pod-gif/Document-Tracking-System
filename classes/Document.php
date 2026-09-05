@@ -40,6 +40,19 @@ class Document
     /** Compliance verdicts the documents list can filter on. */
     public const COMPLIANCE_FILTERS = ['compliant', 'non_compliant', 'exempt'];
 
+    /** How many times to re-take a tracking number lost to a concurrent save. */
+    private const MAX_NUMBER_ATTEMPTS = 5;
+
+    /**
+     * True when a failed write was a unique-constraint collision rather than
+     * a genuine fault. SQLSTATE 23000 covers integrity violations generally,
+     * so the driver's 1062 (duplicate entry) is checked as well.
+     */
+    public static function isDuplicateKey(PDOException $e): bool
+    {
+        return $e->getCode() === '23000' && (int)($e->errorInfo[1] ?? 0) === 1062;
+    }
+
     // -------------------------------------------------------------
     // DASHBOARD / KPI QUERIES
     // -------------------------------------------------------------
@@ -758,7 +771,6 @@ class Document
         // The tracking prefix comes from the originating office, so each
         // department's documents are identifiable from the number alone.
         $originDeptId = !empty($data['origin_department_id']) ? (int)$data['origin_department_id'] : null;
-        $trackingNumber = generate_tracking_number($this->pdo, $originDeptId);
         $approvalStatus = ($data['creator_role'] ?? '') === 'department' ? 'Pending' : 'Not Required';
 
         $sql = "INSERT INTO documents
@@ -769,18 +781,38 @@ class Document
                     (:tn, :title, :type, :priority, :description,
                      'Draft', :dept, :creator, :holder, :due, :approval, NOW())";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            'tn'          => $trackingNumber,
-            'title'       => $data['title'],
-            'type'        => $data['doc_type'],
-            'priority'    => $data['priority'],
-            'description' => $data['description'] ?: null,
-            'dept'        => $data['origin_department_id'] ?: null,
-            'creator'     => $userId,
-            'holder'      => $userId,
-            'due'         => $data['due_date'] ?: null,
-            'approval'    => $approvalStatus,
-        ]);
+
+        // The number is read from the table and then written back, so two
+        // people saving within the same few milliseconds are both handed the
+        // same one and the second insert hits the UNIQUE index. That surfaced
+        // to the clerk as "a system error occurred" and lost the form they
+        // had just filled in. Taking the next number and trying again costs
+        // one extra query in the rare case and nothing the rest of the time.
+        for ($attempt = 1; ; $attempt++) {
+            $trackingNumber = generate_tracking_number($this->pdo, $originDeptId);
+
+            try {
+                $stmt->execute([
+                    'tn'          => $trackingNumber,
+                    'title'       => $data['title'],
+                    'type'        => $data['doc_type'],
+                    'priority'    => $data['priority'],
+                    'description' => $data['description'] ?: null,
+                    'dept'        => $data['origin_department_id'] ?: null,
+                    'creator'     => $userId,
+                    'holder'      => $userId,
+                    'due'         => $data['due_date'] ?: null,
+                    'approval'    => $approvalStatus,
+                ]);
+                break;
+            } catch (PDOException $e) {
+                // Only a collision on the number is worth retrying; anything
+                // else is a real fault and belongs to the caller.
+                if (!self::isDuplicateKey($e) || $attempt >= self::MAX_NUMBER_ATTEMPTS) {
+                    throw $e;
+                }
+            }
+        }
 
         $newId = (int)$this->pdo->lastInsertId();
         log_document_action($this->pdo, $newId, $userId, 'Created', "Document \"{$data['title']}\" created.");
