@@ -22,7 +22,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   distributionsTable = $('#distributionsTable').DataTable({
     ajax: { url: 'ajax/distributions_list.php', dataSrc: 'data' },
-    order: [[2, 'desc']],
+    // Newest record first, not newest distribution date. Those differ: the
+    // date is typed in by hand and can be backdated, so ordering by it buries
+    // a record you just added underneath older entries. Reference numbers are
+    // issued in sequence and zero-padded, so sorting them descending is
+    // "most recently added first".
+    order: [[0, 'desc']],
     columns: [
       { data: 'reference_no', render: (d) => `<span class="tracking-chip">${escapeHtml(d)}</span>` },
       { data: null, render: (row) => `${escapeHtml(row.center_name)}<br><span class="text-muted small">${escapeHtml(row.target_area)}</span>` },

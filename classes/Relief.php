@@ -724,7 +724,7 @@ class Relief
                 JOIN evacuation_centers ec ON ec.id = dist.evacuation_center_id
                 JOIN users u ON u.id = dist.distributed_by
                 LEFT JOIN documents doc ON doc.id = dist.document_id
-                ORDER BY dist.distribution_date DESC, dist.id DESC";
+                ORDER BY dist.created_at DESC, dist.id DESC";
         return $this->pdo->query($sql)->fetchAll();
     }
 
@@ -868,10 +868,110 @@ class Relief
             }
 
             $this->pdo->commit();
+
+            // Alerted after the commit, never inside it. The goods have moved
+            // and the stock is already deducted, so a mail outage must not roll
+            // that back — the same reasoning as Document::route().
+            $this->notifyOversight($distributionId);
+
             return ['id' => $distributionId, 'reference_no' => $referenceNo, 'document_id' => $documentId];
         } catch (Throwable $e) {
             $this->pdo->rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * Rings the bell — and mails, when MAIL_ON_DISTRIBUTION is on — for the
+     * offices that oversee relief, so goods leaving the warehouse are visible
+     * without anyone having to sit and watch the module.
+     *
+     * Recipients come from RELIEF_NOTIFY_USERNAMES, resolved to active accounts
+     * only — a renamed or deactivated account drops out quietly rather than
+     * breaking the save.
+     *
+     * Swallows its own failures for the reason the caller's return value gives:
+     * it answers "were the goods recorded", which they were. A notification
+     * problem is logged, not raised. Each address is mailed independently so
+     * one bad address cannot silence the rest.
+     */
+    private function notifyOversight(int $distributionId): void
+    {
+        try {
+            $usernames = RELIEF_NOTIFY_USERNAMES;
+            if (!$usernames) {
+                return;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($usernames), '?'));
+            $stmt = $this->pdo->prepare(
+                "SELECT u.id, u.full_name, u.email, dep.name AS department_name
+                   FROM users u
+                   LEFT JOIN departments dep ON dep.id = u.department_id
+                  WHERE u.is_active = 1 AND u.username IN ({$placeholders})"
+            );
+            $stmt->execute(array_values($usernames));
+            $recipients = $stmt->fetchAll();
+            if (!$recipients) {
+                return;
+            }
+
+            $detail = $this->pdo->prepare(
+                "SELECT d.reference_no, d.total_beneficiaries, d.distribution_date,
+                        c.name AS center_name, u.full_name AS recorded_by
+                   FROM distributions d
+                   JOIN evacuation_centers c ON c.id = d.evacuation_center_id
+                   JOIN users u              ON u.id = d.distributed_by
+                  WHERE d.id = :id"
+            );
+            $detail->execute(['id' => $distributionId]);
+            $dist = $detail->fetch();
+            if (!$dist) {
+                return;
+            }
+
+            $lines = $this->pdo->prepare(
+                "SELECT inv.item_name, di.quantity
+                   FROM distribution_items di
+                   JOIN relief_inventory inv ON inv.id = di.inventory_id
+                  WHERE di.distribution_id = :id"
+            );
+            $lines->execute(['id' => $distributionId]);
+            $dist['items']             = $lines->fetchAll();
+            $dist['beneficiary_count'] = (int)$dist['total_beneficiaries'];
+
+            // The column is varchar(255); a long centre name must not truncate
+            // the insert into a warning.
+            $message = mb_substr(sprintf(
+                'Relief distribution %s recorded for %s (%s families).',
+                $dist['reference_no'],
+                $dist['center_name'],
+                number_format((int)$dist['total_beneficiaries'])
+            ), 0, 255);
+
+            $notif = $this->pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, created_at)
+                 VALUES (:user, :message, 'distributions.php', NOW())"
+            );
+            foreach ($recipients as $r) {
+                $notif->execute(['user' => $r['id'], 'message' => $message]);
+            }
+
+            if (!MAIL_ON_DISTRIBUTION) {
+                return;
+            }
+            foreach ($recipients as $r) {
+                if (!filter_var((string)$r['email'], FILTER_VALIDATE_EMAIL)) {
+                    continue;
+                }
+                try {
+                    send_distribution_notification($r, $dist);
+                } catch (Throwable $e) {
+                    error_log('[DISTRIBUTION MAIL ERROR] ' . $r['email'] . ' — ' . $e->getMessage());
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('[DISTRIBUTION NOTIFY ERROR] ' . $e->getMessage());
         }
     }
 
@@ -923,11 +1023,103 @@ class Relief
             );
             $upd->execute(['status' => $status, 'id' => $id]);
 
+            // Read off the transition, not the target, so re-saving something
+            // already approved does not alert the recorder a second time.
+            $justApproved = ($status === 'Approved' && $current !== 'Approved');
+
             $this->pdo->commit();
+
+            // Told after the commit, for the reason createDistribution() gives.
+            if ($justApproved) {
+                $this->notifyDistributionApproved($id, $userId);
+            }
+
             return true;
         } catch (Throwable $e) {
             $this->pdo->rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * Tells whoever recorded a distribution that it has been approved.
+     *
+     * Skipped when the approver is the recorder: they just clicked the button,
+     * so mailing them their own decision is noise.
+     *
+     * Swallows its own failures like notifyOversight() — the approval is
+     * committed and stock has already settled by the time this runs, so a mail
+     * problem is logged rather than raised back to the caller.
+     */
+    private function notifyDistributionApproved(int $distributionId, ?int $approverId): void
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT d.reference_no, d.total_beneficiaries, d.distribution_date, d.distributed_by,
+                        c.name AS center_name,
+                        u.full_name, u.email, dep.name AS department_name
+                   FROM distributions d
+                   JOIN evacuation_centers c ON c.id = d.evacuation_center_id
+                   JOIN users u              ON u.id = d.distributed_by
+                   LEFT JOIN departments dep ON dep.id = u.department_id
+                  WHERE d.id = :id AND u.is_active = 1"
+            );
+            $stmt->execute(['id' => $distributionId]);
+            $row = $stmt->fetch();
+            if (!$row) {
+                return;
+            }
+            if ($approverId !== null && (int)$row['distributed_by'] === $approverId) {
+                return;
+            }
+
+            $approverName = 'An approver';
+            if ($approverId !== null) {
+                $a = $this->pdo->prepare("SELECT full_name FROM users WHERE id = :id");
+                $a->execute(['id' => $approverId]);
+                $approverName = (string)($a->fetchColumn() ?: $approverName);
+            }
+
+            $message = mb_substr(sprintf(
+                'Relief distribution %s for %s has been approved.',
+                $row['reference_no'],
+                $row['center_name']
+            ), 0, 255);
+
+            $this->pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, created_at)
+                 VALUES (:user, :message, 'distributions.php', NOW())"
+            )->execute(['user' => (int)$row['distributed_by'], 'message' => $message]);
+
+            if (!MAIL_ON_DISTRIBUTION || !filter_var((string)$row['email'], FILTER_VALIDATE_EMAIL)) {
+                return;
+            }
+
+            $lines = $this->pdo->prepare(
+                "SELECT inv.item_name, di.quantity
+                   FROM distribution_items di
+                   JOIN relief_inventory inv ON inv.id = di.inventory_id
+                  WHERE di.distribution_id = :id"
+            );
+            $lines->execute(['id' => $distributionId]);
+
+            send_distribution_approval_notification(
+                [
+                    'full_name'       => $row['full_name'],
+                    'email'           => $row['email'],
+                    'department_name' => $row['department_name'],
+                ],
+                [
+                    'reference_no'      => $row['reference_no'],
+                    'center_name'       => $row['center_name'],
+                    'distribution_date' => $row['distribution_date'],
+                    'beneficiary_count' => (int)$row['total_beneficiaries'],
+                    'approved_by'       => $approverName,
+                    'items'             => $lines->fetchAll(),
+                ]
+            );
+        } catch (Throwable $e) {
+            error_log('[DISTRIBUTION APPROVAL NOTIFY ERROR] ' . $e->getMessage());
         }
     }
 

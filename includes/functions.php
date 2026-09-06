@@ -592,6 +592,180 @@ function send_route_notification(array $recipient, array $document, string $send
 }
 
 /**
+ * Tells an oversight office that relief goods have been released.
+ *
+ * Mirrors send_route_notification(): the same shell, so the two alerts read as
+ * one system rather than two. $distribution carries reference_no, centre name,
+ * beneficiary count, item lines and who recorded it.
+ */
+function send_distribution_notification(array $recipient, array $distribution): void
+{
+    $appName   = APP_SHORT_NAME;
+    $reference = (string)$distribution['reference_no'];
+    $centre    = (string)$distribution['center_name'];
+    $recorder  = (string)$distribution['recorded_by'];
+    $families  = (int)($distribution['beneficiary_count'] ?? 0);
+    $when      = date('F j, Y g:i A', strtotime((string)$distribution['distribution_date']));
+    $items     = $distribution['items'] ?? [];
+    $link      = app_url('distributions.php');
+
+    $itemLines = '';
+    foreach ($items as $it) {
+        $itemLines .= '  - ' . $it['item_name'] . ' x ' . (int)$it['quantity'] . "\r\n";
+    }
+
+    $text = "Hello {$recipient['full_name']},\r\n\r\n"
+        . "{$recorder} has recorded a relief distribution.\r\n\r\n"
+        . "Reference   : {$reference}\r\n"
+        . "Centre      : {$centre}\r\n"
+        . "Families    : {$families}\r\n"
+        . "Date        : {$when}\r\n"
+        . ($itemLines !== '' ? "\r\nGoods released:\r\n{$itemLines}" : '')
+        . "\r\nReview it here:\r\n{$link}\r\n\r\n"
+        . "-- {$appName}";
+
+    $row = static fn(string $label, string $value): string =>
+        '<tr><td style="padding:6px 12px 6px 0;color:#586173;font-size:13px;white-space:nowrap;">'
+        . e($label) . '</td><td style="padding:6px 0;font-size:13px;font-weight:600;">'
+        . e($value) . '</td></tr>';
+
+    $itemRows = '';
+    foreach ($items as $it) {
+        $itemRows .= '<tr>'
+            . '<td style="padding:5px 0;font-size:13px;border-top:1px solid #e3e3e8;">' . e((string)$it['item_name']) . '</td>'
+            . '<td style="padding:5px 0;font-size:13px;font-weight:700;text-align:right;border-top:1px solid #e3e3e8;">'
+            . number_format((int)$it['quantity']) . '</td></tr>';
+    }
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">'
+        . '<div style="background:#0b2e5e;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;">'
+        . '<div style="font-size:16px;font-weight:700;">' . e($appName) . '</div>'
+        . '<div style="font-size:12px;opacity:.8;">Relief distribution recorded</div>'
+        . '</div>'
+        . '<div style="border:1px solid #e3e3e8;border-top:0;border-radius:0 0 10px 10px;padding:24px;">'
+        . '<p style="margin:0 0 16px;">Hello <strong>' . e($recipient['full_name']) . '</strong>,</p>'
+        . '<p style="margin:0 0 18px;"><strong>' . e($recorder) . '</strong> has recorded a relief distribution '
+        . 'for your office\'s visibility.</p>'
+        . '<div style="background:#f5f7fa;border:1px solid #e3e3e8;border-radius:8px;padding:14px 16px;margin:0 0 18px;">'
+        . '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">' . e($centre) . '</div>'
+        . '<table style="border-collapse:collapse;">'
+        . $row('Reference', $reference)
+        . $row('Families served', number_format($families))
+        . $row('Date', $when)
+        . '</table>'
+        . ($itemRows !== ''
+            ? '<table style="border-collapse:collapse;width:100%;margin-top:12px;">'
+              . '<tr><td style="font-size:12px;color:#586173;padding-bottom:4px;">Goods released</td>'
+              . '<td style="font-size:12px;color:#586173;text-align:right;padding-bottom:4px;">Qty</td></tr>'
+              . $itemRows . '</table>'
+            : '')
+        . '</div>'
+        . '<p style="text-align:center;margin:0 0 18px;">'
+        . '<a href="' . e($link) . '" style="display:inline-block;background:#0b2e5e;color:#fff;'
+        . 'text-decoration:none;font-weight:700;padding:12px 26px;border-radius:8px;">Review distributions</a>'
+        . '</p>'
+        . '<p style="margin:0;font-size:12px;color:#586173;word-break:break-all;">'
+        . 'If the button does not work, paste this into your browser:<br>' . e($link) . '</p>'
+        . '</div></div>';
+
+    (new Mailer())->send(
+        (string)$recipient['email'],
+        (string)$recipient['full_name'],
+        '[' . $reference . '] Relief distribution — ' . $centre,
+        $html,
+        $text
+    );
+}
+
+/**
+ * Tells whoever recorded a distribution that it has been approved.
+ *
+ * Same shell as send_distribution_notification(), in green rather than navy:
+ * the two arrive at different people for opposite reasons — one says goods
+ * went out, this one says your entry cleared — and the colour is what tells
+ * them apart at a glance in a crowded inbox.
+ */
+function send_distribution_approval_notification(array $recipient, array $distribution): void
+{
+    $appName   = APP_SHORT_NAME;
+    $reference = (string)$distribution['reference_no'];
+    $centre    = (string)$distribution['center_name'];
+    $approver  = (string)$distribution['approved_by'];
+    $families  = (int)($distribution['beneficiary_count'] ?? 0);
+    $when      = date('F j, Y g:i A', strtotime((string)$distribution['distribution_date']));
+    $items     = $distribution['items'] ?? [];
+    $link      = app_url('distributions.php');
+
+    $itemLines = '';
+    foreach ($items as $it) {
+        $itemLines .= '  - ' . $it['item_name'] . ' x ' . (int)$it['quantity'] . "\r\n";
+    }
+
+    $text = "Hello {$recipient['full_name']},\r\n\r\n"
+        . "{$approver} has approved the relief distribution you recorded.\r\n\r\n"
+        . "Reference   : {$reference}\r\n"
+        . "Centre      : {$centre}\r\n"
+        . "Families    : {$families}\r\n"
+        . "Date        : {$when}\r\n"
+        . ($itemLines !== '' ? "\r\nGoods released:\r\n{$itemLines}" : '')
+        . "\r\nView it here:\r\n{$link}\r\n\r\n"
+        . "-- {$appName}";
+
+    $row = static fn(string $label, string $value): string =>
+        '<tr><td style="padding:6px 12px 6px 0;color:#586173;font-size:13px;white-space:nowrap;">'
+        . e($label) . '</td><td style="padding:6px 0;font-size:13px;font-weight:600;">'
+        . e($value) . '</td></tr>';
+
+    $itemRows = '';
+    foreach ($items as $it) {
+        $itemRows .= '<tr>'
+            . '<td style="padding:5px 0;font-size:13px;border-top:1px solid #e3e3e8;">' . e((string)$it['item_name']) . '</td>'
+            . '<td style="padding:5px 0;font-size:13px;font-weight:700;text-align:right;border-top:1px solid #e3e3e8;">'
+            . number_format((int)$it['quantity']) . '</td></tr>';
+    }
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">'
+        . '<div style="background:#1a7f44;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;">'
+        . '<div style="font-size:16px;font-weight:700;">' . e($appName) . '</div>'
+        . '<div style="font-size:12px;opacity:.85;">Relief distribution approved</div>'
+        . '</div>'
+        . '<div style="border:1px solid #e3e3e8;border-top:0;border-radius:0 0 10px 10px;padding:24px;">'
+        . '<p style="margin:0 0 16px;">Hello <strong>' . e($recipient['full_name']) . '</strong>,</p>'
+        . '<p style="margin:0 0 18px;"><strong>' . e($approver) . '</strong> has approved the relief '
+        . 'distribution you recorded.</p>'
+        . '<div style="background:#f2f9f4;border:1px solid #cfe6d7;border-radius:8px;padding:14px 16px;margin:0 0 18px;">'
+        . '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">' . e($centre) . '</div>'
+        . '<table style="border-collapse:collapse;">'
+        . $row('Reference', $reference)
+        . $row('Families served', number_format($families))
+        . $row('Date', $when)
+        . $row('Approved by', $approver)
+        . '</table>'
+        . ($itemRows !== ''
+            ? '<table style="border-collapse:collapse;width:100%;margin-top:12px;">'
+              . '<tr><td style="font-size:12px;color:#586173;padding-bottom:4px;">Goods released</td>'
+              . '<td style="font-size:12px;color:#586173;text-align:right;padding-bottom:4px;">Qty</td></tr>'
+              . $itemRows . '</table>'
+            : '')
+        . '</div>'
+        . '<p style="text-align:center;margin:0 0 18px;">'
+        . '<a href="' . e($link) . '" style="display:inline-block;background:#1a7f44;color:#fff;'
+        . 'text-decoration:none;font-weight:700;padding:12px 26px;border-radius:8px;">View distributions</a>'
+        . '</p>'
+        . '<p style="margin:0;font-size:12px;color:#586173;word-break:break-all;">'
+        . 'If the button does not work, paste this into your browser:<br>' . e($link) . '</p>'
+        . '</div></div>';
+
+    (new Mailer())->send(
+        (string)$recipient['email'],
+        (string)$recipient['full_name'],
+        '[' . $reference . '] Approved — ' . $centre,
+        $html,
+        $text
+    );
+}
+
+/**
  * Absolute URL for a path in this application, for use in emails where a
  * relative link is meaningless. Falls back to the configured mail host name
  * when there is no request context, such as a CLI run.

@@ -163,6 +163,20 @@ define('PASSWORD_MIN_LENGTH', 8);              // matches the admin-set minimum
 // unaffected either way, since the mail is sent after the record is committed.
 define('MAIL_ON_ROUTE', true);
 
+// Accounts alerted whenever a relief distribution is recorded, so oversight
+// sees relief movement without having to watch the module.
+//
+// Named accounts rather than a whole office on purpose: the Office of the
+// Secretary has six active users, and only these two follow relief closely.
+// Add a username here to widen it; an entry that matches no active account is
+// skipped without error.
+define('RELIEF_NOTIFY_USERNAMES', ['osec', 'osec_approver']);
+
+// Email those offices as well as ringing their bell. Set false for the bell
+// alone; recording a distribution is unaffected either way, since the mail
+// goes out only after the distribution is committed.
+define('MAIL_ON_DISTRIBUTION', true);
+
 // ---------------------------------------------------------------------
 // Autoload core classes (simple manual autoloader — no Composer needed).
 // ---------------------------------------------------------------------
