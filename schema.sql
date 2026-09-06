@@ -192,7 +192,7 @@ CREATE TABLE `document_logs` (
   `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `document_id` INT UNSIGNED NOT NULL,
   `user_id` INT UNSIGNED NOT NULL,
-  `action` ENUM('Created','Updated','Routed','Received','Completed','Archived','Restored','Attachment Added','Attachment Removed','Approved','Rejected') NOT NULL,
+  `action` ENUM('Created','Updated','Routed','Received','Completed','Archived','Restored','Attachment Added','Attachment Removed','Approved','Rejected','Resubmitted') NOT NULL,
   `details` VARCHAR(500) DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_logs_document` FOREIGN KEY (`document_id`)

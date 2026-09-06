@@ -66,6 +66,7 @@ $logIcons = [
     'Received' => 'bi-inbox', 'Completed' => 'bi-check-circle', 'Archived' => 'bi-archive',
     'Restored' => 'bi-arrow-counterclockwise', 'Attachment Added' => 'bi-paperclip', 'Attachment Removed' => 'bi-x-circle',
     'Approved' => 'bi-patch-check', 'Rejected' => 'bi-x-octagon',
+    'Resubmitted' => 'bi-arrow-repeat',
 ];
 
 // ---------------------------------------------------------------------
@@ -178,6 +179,7 @@ $logTone = [
     'Created' => 'neutral', 'Updated' => 'neutral', 'Routed' => 'info',
     'Received' => 'done', 'Completed' => 'done', 'Approved' => 'done',
     'Rejected' => 'warn', 'Archived' => 'warn', 'Restored' => 'info',
+    'Resubmitted' => 'info',
     'Attachment Added' => 'neutral', 'Attachment Removed' => 'neutral',
 ];
 

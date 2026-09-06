@@ -932,6 +932,18 @@ class Document
     // ROUTING / WORKFLOW
     // -------------------------------------------------------------
 
+    /**
+     * Whether a user may decide approvals. Mirrors the role test the document
+     * view uses to show the Approve/Reject buttons, so a document is only ever
+     * reopened for someone who can actually act on it.
+     */
+    private function recipientCanApprove(int $userId): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT role FROM users WHERE id = :id");
+        $stmt->execute(['id' => $userId]);
+        return in_array($stmt->fetchColumn(), ['admin', 'approver'], true);
+    }
+
     public function route(int $documentId, array $data, int $fromUserId): bool
     {
         $this->pdo->beginTransaction();
@@ -959,10 +971,37 @@ class Document
             );
             $update->execute(['holder' => $data['to_user_id'], 'id' => $documentId]);
 
+            // Sending a rejected document to someone who can approve is a
+            // resubmission: reopen the gate so the approver can rule on the
+            // revision. Without this the rejection is terminal — the approve
+            // buttons never come back and completion stays blocked, stranding
+            // the document forever. Routing it anywhere else (typically the
+            // approver handing it back to the owner) must leave the rejection
+            // standing, because that is the signal to revise it.
+            $reopened = false;
+            if ($this->recipientCanApprove((int)$data['to_user_id'])) {
+                $reopen = $this->pdo->prepare(
+                    "UPDATE documents
+                        SET approval_status = 'Pending', approved_by = NULL, approved_at = NULL
+                      WHERE id = :id AND approval_status = 'Rejected'"
+                );
+                $reopen->execute(['id' => $documentId]);
+                $reopened = $reopen->rowCount() > 0;
+            }
+
             log_document_action(
                 $this->pdo, $documentId, $fromUserId, 'Routed',
                 "Routed to user #{$data['to_user_id']} — Action required: {$data['action_required']}"
             );
+
+            // Logged after the routing entry so the timeline reads in the order
+            // the events actually happened.
+            if ($reopened) {
+                log_document_action(
+                    $this->pdo, $documentId, $fromUserId, 'Resubmitted',
+                    'Revision resubmitted for approval — the earlier rejection was cleared.'
+                );
+            }
 
             $notif = $this->pdo->prepare(
                 "INSERT INTO notifications (user_id, message, link, created_at)
