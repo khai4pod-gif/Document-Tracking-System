@@ -252,6 +252,9 @@ document.addEventListener("DOMContentLoaded", function () {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
+      // Draw once, in place — see the trend chart for why.
+      animation: false,
+      transitions: { active: { animation: { duration: 0 } } },
       plugins: { legend: { display: false } },
       scales: {
         x: { beginAtZero: true, grid: { color: "#f0f1f5" } },
@@ -286,6 +289,9 @@ document.addEventListener("DOMContentLoaded", function () {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      // Draw once, in place — see the trend chart for why.
+      animation: false,
+      transitions: { active: { animation: { duration: 0 } } },
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false } },

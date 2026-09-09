@@ -27,6 +27,13 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       options: {
         responsive: true,
+        // Draw once, in place. By default the line sweeps up from the axis on
+        // every load and replays that sweep on each resize, so the panel never
+        // settled while the window was being adjusted.
+        animation: false,
+        // Hovering a point re-ran a short animation of its own; without this the
+        // line still twitched under the cursor.
+        transitions: { active: { animation: { duration: 0 } } },
         plugins: { legend: { display: false } },
         scales: {
           y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: '#7c8698' } },
@@ -59,6 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // The container is a fixed square; let it drive the size rather than the
         // canvas attributes, so the ring stays centred in it.
         maintainAspectRatio: false,
+        // Draw once, in place. The ring used to spin up from zero on load, which
+        // also meant the total in the middle appeared before the ring around it.
+        animation: false,
+        transitions: { active: { animation: { duration: 0 } } },
         // No built-in legend. The list underneath already names every category
         // with its colour, share and unit count, and drawing a second legend
         // inside the canvas both duplicated that and stole space from the
