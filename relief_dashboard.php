@@ -99,18 +99,23 @@ include __DIR__ . '/includes/header.php';
         </a>
       </div>
       <div class="p-3">
+        <?php
+        // One palette for the ring, the list under it and the ranking chart, so a
+        // category is the same colour everywhere on the page. The ring used to
+        // carry its own colours, which disagreed with the dots in the list.
+        $catColors = ['#4361ee', '#f4a261', '#2a9d8f', '#e76f51', '#5b5fc7', '#e9c46a', '#9d4edd', '#118ab2'];
+        $catTotal  = array_sum(array_column($breakdown, 'total_qty')) ?: 1;
+        ?>
         <div class="category-breakdown">
           <div class="category-breakdown__chart">
-            <canvas id="categoryChart" width="180" height="180"></canvas>
+            <canvas id="categoryChart"></canvas>
             <div class="category-breakdown__center">
-              <?php $catTotal = array_sum(array_column($breakdown, 'total_qty')) ?: 1; ?>
               <div class="category-breakdown__total"><?= number_format($catTotal) ?></div>
               <div class="category-breakdown__total-label">Total Units</div>
             </div>
           </div>
           <ul class="category-breakdown__list">
             <?php
-            $catColors = ['#4361ee', '#f4a261', '#2a9d8f', '#e76f51', '#5b5fc7', '#e9c46a', '#9d4edd', '#118ab2'];
             foreach ($breakdown as $i => $c):
               $qty = (int)$c['total_qty'];
               $pct = round($qty / $catTotal * 100);
@@ -217,6 +222,7 @@ const TREND_LABELS = ' . json_encode($trendLabels) . ';
 const TREND_DATA = ' . json_encode($trendData) . ';
 const CATEGORY_LABELS = ' . json_encode($catLabels) . ';
 const CATEGORY_DATA = ' . json_encode($catData) . ';
+const CATEGORY_COLORS = ' . json_encode($catColors) . ';
 </script>
 <script src="' . e(asset('assets/js/relief_dashboard.js')) . '"></script>
 <script>
@@ -224,9 +230,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const el = document.getElementById("categoryRankChart");
   if (!el || typeof Chart === "undefined") return;
 
-  const sorted = CATEGORY_LABELS.map((label, i) => ({ label, value: CATEGORY_DATA[i] }))
+  // Carry the original position through the sort so a category keeps the colour
+  // it has in the ring above; indexing the palette by rank would recolour every
+  // bar whenever the ordering changed.
+  const sorted = CATEGORY_LABELS.map((label, i) => ({ label, value: CATEGORY_DATA[i], seq: i }))
     .sort((a, b) => b.value - a.value);
-  const palette = ["#4361ee", "#f4a261", "#2a9d8f", "#e76f51", "#5b5fc7", "#e9c46a", "#9d4edd", "#118ab2"];
+  const palette = CATEGORY_COLORS;
 
   new Chart(el.getContext("2d"), {
     type: "bar",
@@ -234,7 +243,7 @@ document.addEventListener("DOMContentLoaded", function () {
       labels: sorted.map(d => d.label),
       datasets: [{
         data: sorted.map(d => d.value),
-        backgroundColor: sorted.map((_, i) => palette[i % palette.length]),
+        backgroundColor: sorted.map(d => palette[d.seq % palette.length]),
         borderRadius: 6,
         maxBarThickness: 28
       }]

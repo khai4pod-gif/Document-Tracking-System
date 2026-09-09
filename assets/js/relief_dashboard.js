@@ -5,7 +5,6 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const navy = '#122a4d';
   const gridColor = '#eef1f5';
 
   // ---- Trend line chart ----
@@ -46,14 +45,26 @@ document.addEventListener('DOMContentLoaded', () => {
         labels: CATEGORY_LABELS.length ? CATEGORY_LABELS : ['No data'],
         datasets: [{
           data: CATEGORY_DATA.length ? CATEGORY_DATA : [1],
-          backgroundColor: ['#2f80ed', '#f2994a', '#1e9e6b', '#e0473f', '#5b5fc7', '#8a93a3'],
+          // Shared with the list below the ring and the ranking chart, so one
+          // category reads as one colour across the whole page.
+          backgroundColor: (typeof CATEGORY_COLORS !== 'undefined' && CATEGORY_COLORS.length)
+            ? CATEGORY_COLORS
+            : ['#4361ee', '#f4a261', '#2a9d8f', '#e76f51', '#5b5fc7', '#e9c46a'],
           borderWidth: 2,
           borderColor: '#fff',
         }],
       },
       options: {
         responsive: true,
-        plugins: { legend: { position: 'bottom', labels: { color: navy, boxWidth: 12, padding: 14 } } },
+        // The container is a fixed square; let it drive the size rather than the
+        // canvas attributes, so the ring stays centred in it.
+        maintainAspectRatio: false,
+        // No built-in legend. The list underneath already names every category
+        // with its colour, share and unit count, and drawing a second legend
+        // inside the canvas both duplicated that and stole space from the
+        // bottom — which pushed the ring upward while the total sat centred on
+        // the box, so the two overlapped.
+        plugins: { legend: { display: false } },
         cutout: '65%',
       },
     });
