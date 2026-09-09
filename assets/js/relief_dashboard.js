@@ -27,6 +27,11 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       options: {
         responsive: true,
+        // The wrapper sets the height. Left to itself the chart derives an
+        // aspect ratio from the canvas attributes, lays out at that size, then
+        // stretches to the container on load — movement that survives having
+        // the animation switched off.
+        maintainAspectRatio: false,
         // Draw once, in place. By default the line sweeps up from the axis on
         // every load and replays that sweep on each resize, so the panel never
         // settled while the window was being adjusted.

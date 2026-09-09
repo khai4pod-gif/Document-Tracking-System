@@ -86,7 +86,7 @@ include __DIR__ . '/includes/header.php';
   <div class="col-lg-7">
     <div class="card-panel h-100">
       <div class="card-panel-header">Distribution Trend (Last 6 Months)</div>
-      <div class="p-3"><canvas id="trendChart" height="260"></canvas></div>
+      <div class="p-3"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
     </div>
   </div>
   <!-- Category breakdown -->
@@ -144,6 +144,13 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <style>
+/* Charts size to their box, not to a ratio derived from the canvas attributes.
+   Without a fixed height the canvas is laid out at its default size first and
+   then resized to the container on load, which reads as the chart animating
+   into place even with Chart.js animation switched off. */
+.chart-box { position: relative; height: 260px; }
+.chart-box--short { height: 140px; }
+
 .category-breakdown { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
 .category-breakdown__chart { position: relative; width: 180px; height: 180px; }
 .category-breakdown__center {
@@ -168,7 +175,7 @@ include __DIR__ . '/includes/header.php';
   <div class="col-lg-12">
     <div class="card-panel">
       <div class="card-panel-header">Goods Breakdown by Category (Line)</div>
-      <div class="p-3"><canvas id="categoryLineChart" height="140"></canvas></div>
+      <div class="p-3"><div class="chart-box chart-box--short"><canvas id="categoryLineChart"></canvas></div></div>
     </div>
   </div>
 </div>
@@ -177,7 +184,7 @@ include __DIR__ . '/includes/header.php';
   <div class="col-lg-12">
     <div class="card-panel">
       <div class="card-panel-header">Category Ranking (Units on Hand)</div>
-      <div class="p-3"><canvas id="categoryRankChart" height="140"></canvas></div>
+      <div class="p-3"><div class="chart-box chart-box--short"><canvas id="categoryRankChart"></canvas></div></div>
     </div>
   </div>
 </div>
