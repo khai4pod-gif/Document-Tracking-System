@@ -56,3 +56,12 @@ if (!defined('RELIEF_NOTIFY_USERNAMES')) {
 if (!defined('MAIL_ON_DISTRIBUTION')) {
     define('MAIL_ON_DISTRIBUTION', false);
 }
+
+// Document::route() reads this before its transaction even begins (not
+// inside any try/catch) to validate the optional transmittal_mode field —
+// an undefined constant there is an immediate fatal Error on every route()
+// call. Must match config/config.php's TRANSMITTAL_MODES exactly, since
+// callers pass real values from that list.
+if (!defined('TRANSMITTAL_MODES')) {
+    define('TRANSMITTAL_MODES', ['Hard Copy', 'Soft Copy', 'Email']);
+}
