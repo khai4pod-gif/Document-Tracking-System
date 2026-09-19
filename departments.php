@@ -27,7 +27,7 @@ include __DIR__ . '/includes/header.php';
     <div class="table-responsive">
       <table class="table table-hover align-middle w-100" id="deptTable">
         <thead>
-          <tr><th>Name</th><th>Code</th><th>Description</th><th>Users</th><th>Status</th><th class="text-end">Actions</th></tr>
+          <tr><th>Name</th><th>Code</th><th>Description</th><th>Assigned Approver</th><th>Users</th><th>Status</th><th class="text-end">Actions</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -53,9 +53,21 @@ include __DIR__ . '/includes/header.php';
             <label class="form-label">Code <span class="text-danger">*</span></label>
             <input type="text" name="code" id="fieldDeptCode" class="form-control text-uppercase" maxlength="20" placeholder="e.g. RECORDS" required>
           </div>
-          <div class="mb-1">
+          <div class="mb-3">
             <label class="form-label">Description</label>
             <textarea name="description" id="fieldDeptDescription" class="form-control" rows="2" maxlength="255"></textarea>
+          </div>
+          <div class="mb-1">
+            <label class="form-label">Assigned Approver</label>
+            <select name="approver_user_id" id="fieldDeptApprover" class="form-select">
+              <option value="">— No approver assigned —</option>
+            </select>
+            <div class="form-text">
+              Documents handled by this office are routed here automatically once the
+              Office of the Secretary acknowledges them. Only active approver accounts
+              are listed. Leave unset and documents for this office will wait at the
+              Office of the Secretary.
+            </div>
           </div>
         </div>
         <div class="modal-footer">

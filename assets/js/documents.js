@@ -29,6 +29,8 @@ let documentModal, documentsTable;
 
 document.addEventListener('DOMContentLoaded', () => {
   documentModal = new bootstrap.Modal(document.getElementById('documentModal'));
+  typeDetectInit();
+  saveGateInit();
 
   documentsTable = $('#documentsTable').DataTable({
     // Built from the dropdowns, which the page may have pre-selected from the
@@ -108,12 +110,14 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('documentForm').reset();
       document.getElementById('documentId').value = '';
       document.getElementById('documentModalLabel').innerHTML = '<i class="bi bi-file-earmark-plus me-2"></i>New Document';
+      typeDetectReset('create');
+      saveGateApply();
       document.getElementById('attachmentWrapper').style.display = '';
-      // Routing is offered on create only; existing documents use the Route action.
+      // The block states where the document will go rather than asking, so
+      // there is no recipient picker left to populate.
       const routeWrapper = document.getElementById('routeOnCreateWrapper');
       if (routeWrapper) {
         routeWrapper.style.display = '';
-        loadUsersDropdown('fieldRouteTo', 'Do not route yet — save as draft');
       }
       documentModal.show();
     });
@@ -136,6 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('fieldDueDate').value = d.due_date_raw || '';
         document.getElementById('fieldDescription').value = d.description || '';
         document.getElementById('attachmentWrapper').style.display = 'none';
+        typeDetectReset('edit');
+        saveGateApply();
         const routeWrapper = document.getElementById('routeOnCreateWrapper');
         if (routeWrapper) routeWrapper.style.display = 'none';
         document.getElementById('documentModalLabel').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Edit Document';
@@ -217,4 +223,243 @@ function loadUsersDropdown(selectId, placeholder) {
       });
     })
     .catch(() => { select.innerHTML = '<option value="">Failed to load users</option>'; });
+}
+
+
+/* ===================== Save gate =====================
+ * A new document cannot be saved without the document itself. The type is
+ * read from the file, so an entry with nothing attached has nothing to
+ * classify and nothing to hand on. Editing is exempt: the file was
+ * uploaded when the document was created, and the upload field is hidden
+ * on that path.
+ */
+
+function saveGateInit() {
+  const file = document.getElementById('fieldAttachment');
+  if (file) file.addEventListener('change', saveGateApply);
+  saveGateApply();
+}
+
+function saveGateApply() {
+  const btn = document.getElementById('btnSaveDocument');
+  if (!btn) return;
+  const idField = document.getElementById('documentId');
+  const file    = document.getElementById('fieldAttachment');
+  const isEdit  = !!(idField && idField.value !== '');
+  const hasFile = !!(file && file.files && file.files.length);
+  const ready   = isEdit || hasFile;
+
+  btn.disabled = !ready;
+  btn.title = ready ? '' : 'Attach the document file first.';
+
+  // Only a field the user can see may be required: on edit the upload is
+  // hidden, and a hidden required control blocks the submit with an error
+  // no one can reach.
+  if (file) file.required = !isEdit;
+}
+
+
+/* ===================== Automatic document type =====================
+ * The creator does not pick the type — the system reads the document
+ * and says what it is. This is the form-side half of that: it asks
+ * ajax/document_classify_preview.php what the attached file looks like
+ * and shows the answer *before* the document is saved.
+ *
+ * The preview and the real classification run the same extractor and
+ * the same classifier on the server, so what the form shows is what
+ * gets stored. The <select> is still in the page, hidden, for the two
+ * cases the system will not decide on its own: a file it cannot read
+ * confidently, and a creator who disagrees with it.
+ */
+
+const TD = {};          // cached elements, filled by typeDetectInit()
+let tdToken = 0;        // guards against a slow reply overwriting a fast one
+let tdTextTimer = null;
+
+function typeDetectInit() {
+  TD.card = document.getElementById('typeDetected');
+  if (!TD.card) return;
+  TD.icon     = TD.card.querySelector('.type-detect__icon');
+  TD.value    = document.getElementById('typeDetectedValue');
+  TD.note     = document.getElementById('typeDetectedNote');
+  TD.conf     = document.getElementById('typeDetectedConf');
+  TD.why      = document.getElementById('typeDetectedWhy');
+  TD.override = document.getElementById('btnOverrideType');
+  TD.manual   = document.getElementById('typeManual');
+  TD.select   = document.getElementById('fieldType');
+  TD.help     = document.getElementById('typeManualHelp');
+  TD.flag     = document.getElementById('fieldTypeOverridden');
+  TD.file     = document.getElementById('fieldAttachment');
+  TD.title    = document.getElementById('fieldTitle');
+  TD.desc     = document.getElementById('fieldDescription');
+
+  if (TD.file) TD.file.addEventListener('change', () => typeDetectRun());
+
+  // Re-reading a 10 MB upload every time a letter is typed in the title
+  // would be absurd, so the title and description only re-trigger the
+  // check when there is no file to read — which is exactly the case
+  // where they are the only evidence there is.
+  const onText = () => {
+    if (TD.file && TD.file.files && TD.file.files.length) return;
+    if (TD.flag.value === '1') return;               // creator has taken over
+    clearTimeout(tdTextTimer);
+    tdTextTimer = setTimeout(() => typeDetectRun(), 600);
+  };
+  if (TD.title) TD.title.addEventListener('input', onText);
+  if (TD.desc) TD.desc.addEventListener('input', onText);
+
+  if (TD.override) {
+    TD.override.addEventListener('click', () => typeDetectHandOver('Set by you.'));
+  }
+  // Touching the select at all is a decision: from then on the server
+  // keeps what the creator chose instead of replacing it.
+  if (TD.select) {
+    TD.select.addEventListener('change', () => { TD.flag.value = '1'; });
+  }
+}
+
+/** @param {'create'|'edit'} mode */
+function typeDetectReset(mode) {
+  if (!TD.card) return;
+  clearTimeout(tdTextTimer);
+  tdToken++;                                   // abandon any reply in flight
+  TD.flag.value = '';
+  TD.why.hidden = true;
+  TD.why.textContent = '';
+  TD.conf.hidden = true;
+
+  if (mode === 'edit') {
+    // Existing documents were classified when they were created. Editing
+    // one is a correction, so the choice belongs to the creator here.
+    TD.card.hidden = true;
+    TD.manual.hidden = false;
+    TD.help.textContent = 'Set when the document was created. Change it if it was read wrongly.';
+    return;
+  }
+
+  TD.card.hidden = false;
+  TD.card.dataset.state = 'idle';
+  TD.icon.innerHTML = '<i class="bi bi-stars"></i>';
+  TD.value.textContent = 'Detected automatically';
+  TD.note.textContent = 'Attach the document and the system will identify its type.';
+  TD.manual.hidden = true;
+  TD.help.textContent = '';
+  TD.override.hidden = true;
+}
+
+/** Reveal the select and stop the system overruling it. */
+function typeDetectHandOver(note) {
+  TD.flag.value = '1';
+  TD.manual.hidden = false;
+  TD.override.hidden = true;
+  TD.help.textContent = note || '';
+  TD.select.focus();
+}
+
+async function typeDetectRun() {
+  if (!TD.card || TD.card.hidden) return;
+
+  const title = (TD.title ? TD.title.value : '').trim();
+  const hasFile = !!(TD.file && TD.file.files && TD.file.files.length);
+  if (!hasFile && title.length < 3) return;     // nothing to go on yet
+
+  const token = ++tdToken;
+  TD.card.dataset.state = 'working';
+  TD.icon.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+  TD.value.textContent = hasFile ? 'Reading the document…' : 'Checking…';
+  TD.note.textContent = hasFile ? TD.file.files[0].name : '';
+  TD.conf.hidden = true;
+  TD.why.hidden = true;
+
+  const fd = new FormData();
+  fd.append('csrf_token', CSRF_TOKEN);
+  fd.append('title', title);
+  fd.append('description', TD.desc ? TD.desc.value : '');
+  if (hasFile) fd.append('attachment', TD.file.files[0]);
+
+  let res;
+  try {
+    const r = await fetch('ajax/document_classify_preview.php', {
+      method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    res = await r.json();
+  } catch (e) {
+    res = null;
+  }
+  if (token !== tdToken) return;                // a newer check has started
+
+  // A failed check must not block the document. Hand the choice back
+  // rather than leaving the creator staring at a spinner.
+  if (!res || !res.success) {
+    TD.card.dataset.state = 'unsure';
+    TD.icon.innerHTML = '<i class="bi bi-exclamation-triangle"></i>';
+    TD.value.textContent = 'Could not read the document';
+    TD.note.textContent = (res && res.message) || 'The check did not complete. Please choose the type below.';
+    typeDetectHandOver('');
+    return;
+  }
+
+  typeDetectRender(res);
+}
+
+function typeDetectRender(res) {
+  const pct = Math.round((res.confidence || 0) * 100);
+  const fromFile = res.read_from === 'pdf' || res.read_from === 'docx' || res.read_from === 'ocr';
+  const readNote = fromFile
+    ? 'Read from ' + res.read_from.toUpperCase() + ' — ' + Number(res.chars).toLocaleString() + ' characters.'
+    : 'Read from the title and description.';
+
+  if (res.reasons && res.reasons.length) {
+    TD.why.textContent = 'Matched: ' + res.reasons.join(', ');
+    TD.why.hidden = false;
+  } else {
+    TD.why.hidden = true;
+  }
+
+  // The file and the title name different types, and each reading was
+  // strong enough to have been filed on its own. Nothing is asserted:
+  // both readings are shown and the choice goes back to the creator.
+  if (res.agreement === 'conflict' && res.document && res.title) {
+    TD.card.dataset.state = 'unsure';
+    TD.icon.innerHTML = '<i class="bi bi-exclamation-triangle"></i>';
+    TD.value.textContent = 'The document and the title disagree';
+    TD.note.textContent = 'The contents read as ' + res.document.type
+      + ', the title and file name read as ' + res.title.type + '. Please choose the correct type.';
+    TD.why.hidden = true;
+    TD.conf.hidden = true;
+    TD.manual.hidden = false;
+    TD.override.hidden = true;
+    TD.help.textContent = 'Please choose the type.';
+    return;
+  }
+
+  if (res.confident) {
+    TD.card.dataset.state = 'done';
+    TD.icon.innerHTML = '<i class="bi bi-check-lg"></i>';
+    TD.value.textContent = res.type;
+    TD.note.textContent = res.warning
+      ? res.warning
+      : (res.agreement === 'agree' ? 'The contents and the name agree. ' : '') + readNote;
+    TD.conf.textContent = pct + '% confident';
+    TD.conf.hidden = false;
+    // Post the same answer the server will reach, so the saved document
+    // matches what the creator was shown even if the two ever diverge.
+    TD.select.value = res.type;
+    TD.manual.hidden = true;
+    TD.flag.value = '';
+    TD.override.hidden = false;
+    return;
+  }
+
+  // Not confident enough to assert. Saying so and asking is honest;
+  // asserting a coin-flip and being wrong is how people stop trusting it.
+  TD.card.dataset.state = 'unsure';
+  TD.icon.innerHTML = '<i class="bi bi-question-lg"></i>';
+  TD.value.textContent = 'Not sure what this document is';
+  TD.note.textContent = res.warning
+    ? res.warning
+    : readNote + ' Closest match was ' + res.type + ' (' + pct + '%), which is too weak to use.';
+  TD.manual.hidden = false;
+  TD.override.hidden = true;
+  TD.help.textContent = 'Please choose the type.';
 }

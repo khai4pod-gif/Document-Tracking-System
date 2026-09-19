@@ -1,7 +1,11 @@
 /**
  * assets/js/document_view.js
- * Powers document_view.php: routing, acknowledgment, completion,
- * and attachment / cloud-link add and delete actions.
+ * Powers document_view.php: acknowledgment, approval, completion, and
+ * attachment / cloud-link add and delete actions.
+ *
+ * Routing is deliberately absent — a document moves by itself (upload ->
+ * Office of the Secretary -> that office's approver -> back to the
+ * creator), so there is no recipient to pick and no Route action here.
  */
 
 function getDocumentId() {
@@ -10,33 +14,10 @@ function getDocumentId() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const routeModalEl = document.getElementById('routeModal');
   const attachmentModalEl = document.getElementById('attachmentModal');
   const linkModalEl = document.getElementById('linkModal');
-  const routeModal = routeModalEl ? new bootstrap.Modal(routeModalEl) : null;
   const attachmentModal = attachmentModalEl ? new bootstrap.Modal(attachmentModalEl) : null;
   const linkModal = linkModalEl ? new bootstrap.Modal(linkModalEl) : null;
-
-  const btnRoute = document.getElementById('btnRouteDoc');
-  if (btnRoute) {
-    btnRoute.addEventListener('click', () => {
-      loadUsersDropdown();
-      routeModal.show();
-    });
-  }
-
-  const routeForm = document.getElementById('routeForm');
-  if (routeForm) {
-    routeForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const res = await apiPost('ajax/document_route.php', fd);
-      if (res.success) {
-        notify('success', res.message);
-        setTimeout(() => window.location.reload(), 900);
-      }
-    });
-  }
 
   const btnComplete = document.getElementById('btnMarkComplete');
   if (btnComplete) {
@@ -48,12 +29,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Both decisions offer an optional note. The document returns to its
+  // creator either way, so this is the approver's one chance to say what
+  // needs doing — especially on a rejection, where "no" without a reason
+  // leaves the creator guessing at the revision.
+  //
+  // `=== null` means cancelled; an empty string means confirmed with no
+  // note, which is allowed.
   const btnApprove = document.getElementById('btnApproveDoc');
   if (btnApprove) {
     btnApprove.addEventListener('click', async () => {
-      const confirmed = await confirmAction('Approve this document?', 'It will become eligible for routing.', 'Yes, approve');
-      if (!confirmed) return;
-      const res = await apiPost('ajax/document_approve.php', { document_id: getDocumentId(), decision: 'approve' });
+      const remarks = await confirmWithRemarks({
+        title: 'Approve this document?',
+        text: 'It will be returned to the creator as approved.',
+        confirmText: 'Yes, approve',
+        label: 'Message to the creator',
+        placeholder: 'Any instruction or guidance to go with the approval…',
+        help: 'Shown to the creator with the document.',
+        optional: true,
+        icon: 'question',
+      });
+      if (remarks === null) return;
+      const res = await apiPost('ajax/document_approve.php', {
+        document_id: getDocumentId(), decision: 'approve', remarks,
+      });
       if (res.success) { notify('success', res.message); setTimeout(() => window.location.reload(), 900); }
     });
   }
@@ -61,9 +60,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnReject = document.getElementById('btnRejectDoc');
   if (btnReject) {
     btnReject.addEventListener('click', async () => {
-      const confirmed = await confirmAction('Reject this document?', 'The submitter will need to revise and resubmit.', 'Yes, reject');
-      if (!confirmed) return;
-      const res = await apiPost('ajax/document_approve.php', { document_id: getDocumentId(), decision: 'reject' });
+      const remarks = await confirmWithRemarks({
+        title: 'Reject this document?',
+        text: 'It will be returned to the creator for revision.',
+        confirmText: 'Yes, reject',
+        label: 'Message to the creator',
+        placeholder: 'What needs to be corrected before resubmitting…',
+        help: 'Shown to the creator with the document.',
+        optional: true,
+      });
+      if (remarks === null) return;
+      const res = await apiPost('ajax/document_approve.php', {
+        document_id: getDocumentId(), decision: 'reject', remarks,
+      });
       if (res.success) { notify('success', res.message); setTimeout(() => window.location.reload(), 900); }
     });
   }
@@ -165,19 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function loadUsersDropdown() {
-  const select = document.getElementById('routeToUser');
-  select.innerHTML = '<option value="">Loading users…</option>';
-  fetch('ajax/users_list.php')
-    .then((r) => r.json())
-    .then((res) => {
-      select.innerHTML = '<option value="">Select recipient…</option>';
-      (res.data || []).forEach((u) => {
-        const opt = document.createElement('option');
-        opt.value = u.id;
-        opt.textContent = `${u.full_name} — ${u.department_name || u.role}`;
-        select.appendChild(opt);
-      });
-    })
-    .catch(() => { select.innerHTML = '<option value="">Failed to load users</option>'; });
-}
+// loadUsersDropdown() was removed with the Route action: it filled the
+// recipient <select>, and there is no recipient to choose any more.
+

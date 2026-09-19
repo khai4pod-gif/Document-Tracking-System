@@ -101,6 +101,26 @@ define('ROUTE_ACTIONS', [
 ]);
 define('DEFAULT_ROUTE_ACTION', 'FYI - FOR INFORMATION/REFERENCE');
 
+// How a document physically reached the next office. Recorded per hop and
+// printed on every routing line of the document history, because "who had
+// it when" is only half the answer when the paper and the scan travel
+// separately.
+define('TRANSMITTAL_MODES', ['Hard Copy', 'Soft Copy', 'Email']);
+define('DEFAULT_TRANSMITTAL_MODE', 'Hard Copy');
+
+// The per-office Document Timeline on the document view — the card list
+// that groups the journey by the office holding the document and counts
+// the time spent in each.
+//
+// Switched off in favour of the flat Document History register below it,
+// which is the form the panel asked for. Everything that builds it is
+// still in place and still maintained: the hops are computed on every
+// document view, the styles and the expand/collapse behaviour are intact,
+// and setting this back to true is the whole of turning it on again. It
+// is the view that answers "how long did each office hold this", so it is
+// worth keeping for the turnaround-time work.
+define('SHOW_DOCUMENT_TIMELINE', false);
+
 // Departments whose staff keep agency-wide dashboard figures. Every other
 // office sees only the documents its own account created.
 // Matched on departments.code — see user_sees_all_documents().
@@ -191,6 +211,23 @@ spl_autoload_register(function (string $class) {
         }
     }
 });
+
+
+// Composer's autoloader, when it has been installed (it carries
+// smalot/pdfparser, used to read uploaded PDFs).
+//
+// It has to be loaded HERE, before includes/functions.php below, and not
+// lazily at the point of first use. composer.json lists
+// includes/functions.php under autoload.files, and Composer includes
+// those with a plain `require` guarded only against its own repeat
+// calls — so if this file loads functions.php first and something
+// pulls in the autoloader afterwards, functions.php is read a second
+// time and every helper in it is a fatal redeclaration.
+$__autoload = __DIR__ . '/../vendor/autoload.php';
+if (is_file($__autoload)) {
+    require_once $__autoload;
+}
+unset($__autoload);
 
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/../includes/functions.php';

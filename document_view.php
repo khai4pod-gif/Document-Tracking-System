@@ -224,13 +224,13 @@ include __DIR__ . '/includes/header.php';
           <i class="bi bi-inbox-fill me-1"></i> Acknowledge Receipt
         </button>
       <?php endif; ?>
-      <?php if (!$canRoute): ?>
-        <button class="btn btn-outline-primary btn-sm" disabled title="Your account does not have permission to route documents.">
-          <i class="bi bi-signpost-split me-1"></i> Route
-        </button>
-      <?php else: ?>
-        <button class="btn btn-outline-primary btn-sm" id="btnRouteDoc"><i class="bi bi-signpost-split me-1"></i> Route</button>
-      <?php endif; ?>
+      <?php
+      // No Route button: a document moves on its own — to the Office of the
+      // Secretary on upload, to the office's approver once acknowledged, and
+      // back to its creator once decided. A manual hop alongside that would
+      // let a document leave the chain and land somewhere the automatic
+      // steps never look for it. See includes/auto_routing.php.
+      ?>
       <?php if ($blocksCompletion): ?>
         <button class="btn btn-outline-success btn-sm" disabled title="This document must be approved before it can be marked completed.">
           <i class="bi bi-check-circle me-1"></i> Mark Completed
@@ -547,6 +547,73 @@ include __DIR__ . '/includes/header.php';
   .dt-act { flex-wrap: wrap; }
   .dt-act__time { width: 100%; padding-left: 2.1rem; }
 }
+
+/* ===================== Document History =====================
+ * The flat register, styled after the record book it replaces: a titled
+ * bar with the row count and pager on the right, and one tinted card per
+ * entry. The tint carries the kind of event, so a page of history can be
+ * read by colour before it is read by word.
+ */
+.dh-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; flex-wrap: wrap;
+  padding: .55rem .9rem;
+  background: linear-gradient(180deg, #4a5765 0%, #39434f 100%);
+  color: #fff;
+  border-radius: .5rem .5rem 0 0;
+}
+.dh-head__title { font-size: .82rem; font-weight: 700; letter-spacing: .06em; }
+.dh-head__pager { display: flex; align-items: center; gap: .35rem; font-size: .72rem; letter-spacing: .04em; }
+.dh-pg {
+  border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.08);
+  color: #fff; border-radius: 50%; width: 22px; height: 22px; line-height: 1;
+  font-size: .62rem; padding: 0; cursor: pointer;
+}
+.dh-pg:hover:not(:disabled) { background: rgba(255,255,255,.25); }
+.dh-pg:disabled { opacity: .35; cursor: default; }
+
+.dh-row {
+  border: 1px solid #e6e9ee;
+  border-left: 4px solid #adb5bd;
+  border-radius: .35rem;
+  background: #f8f9fa;
+  padding: .5rem .75rem;
+  margin-bottom: .5rem;
+}
+.dh-row:last-child { margin-bottom: 0; }
+.dh-row__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.dh-when   { font-weight: 700; color: #1b2733; font-size: .85rem; }
+.dh-what   { font-weight: 700; font-size: .85rem; letter-spacing: .04em; }
+.dh-who    { color: #2b6cb0; font-size: .85rem; }
+.dh-row__detail { font-size: .8rem; color: #55636f; margin-top: .15rem; }
+
+/* One tint per kind of event. */
+.dh-row--created,
+.dh-row--attachment-added { background: #fffbea; border-left-color: #d9a406; }
+.dh-row--created   .dh-what,
+.dh-row--attachment-added .dh-what { color: #8a6a04; }
+
+.dh-row--routed      { background: #fdeee2; border-left-color: #d9700b; }
+.dh-row--routed      .dh-what { color: #b5590a; }
+
+.dh-row--received    { background: #eef6ff; border-left-color: #2b6cb0; }
+.dh-row--received    .dh-what { color: #2b6cb0; }
+
+.dh-row--approved,
+.dh-row--completed   { background: #edf9f0; border-left-color: #1f8a4c; }
+.dh-row--approved  .dh-what,
+.dh-row--completed .dh-what { color: #1f8a4c; }
+
+.dh-row--rejected    { background: #fdecec; border-left-color: #c0392b; }
+.dh-row--rejected    .dh-what { color: #c0392b; }
+
+.dh-row--resubmitted { background: #f3eefc; border-left-color: #6b46c1; }
+.dh-row--resubmitted .dh-what { color: #6b46c1; }
+
+.dh-row--archived    { background: #f1f3f5; border-left-color: #6c757d; }
+.dh-row--archived    .dh-what { color: #55636f; }
+
+@media print { .dh-head, #dhRows { display: none !important; } }
 </style>
 
 <div class="row g-3">
@@ -649,6 +716,7 @@ include __DIR__ . '/includes/header.php';
   </div>
 </div>
 
+<?php if (SHOW_DOCUMENT_TIMELINE): ?>
 <!-- ===================== Document Timeline ===================== -->
 <div class="row g-3 mt-0">
   <div class="col-12">
@@ -762,44 +830,62 @@ include __DIR__ . '/includes/header.php';
     </div>
   </div>
 </div>
+<?php endif; ?>
 
-<!-- Route Modal -->
-<div class="modal fade" id="routeModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <form id="routeForm">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Route Document</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" name="document_id" value="<?= (int)$doc['id'] ?>">
-          <div class="mb-3">
-            <label class="form-label">Route To <span class="text-danger">*</span></label>
-            <select name="to_user_id" id="routeToUser" class="form-select" required><option value="">Loading users…</option></select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Action Required <span class="text-danger">*</span></label>
-            <select name="action_required" class="form-select" required>
-              <option value="">Select action required…</option>
-              <?php foreach (route_action_options() as $__action): ?>
-                <option value="<?= e($__action) ?>"><?= e($__action) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="mb-1">
-            <label class="form-label">Remarks</label>
-            <textarea name="remarks" class="form-control" rows="3" placeholder="Optional notes for the recipient"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i> Route Document</button>
-        </div>
-      </form>
+<!-- ===================== Document History ===================== -->
+<!--
+  The flat, chronological record, newest first — the same journey the
+  timeline above tells by office, told instead one entry at a time. Both
+  are wanted: the timeline answers "where did it sit and for how long",
+  this answers "what happened, exactly, and who did it".
+-->
+<div class="row g-3 mt-1">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="dh-head">
+        <span class="dh-head__title">
+          <i class="bi bi-list-columns-reverse me-2"></i>DOCUMENT HISTORY
+        </span>
+        <span class="dh-head__pager">
+          <span id="dhCounter">ROW 0 - 0 OF 0</span>
+          <button type="button" class="dh-pg" data-dh="first" title="First">&#124;&laquo;</button>
+          <button type="button" class="dh-pg" data-dh="prev"  title="Previous">&laquo;</button>
+          <button type="button" class="dh-pg" data-dh="next"  title="Next">&raquo;</button>
+          <button type="button" class="dh-pg" data-dh="last"  title="Last">&raquo;&#124;</button>
+        </span>
+      </div>
+
+      <div class="p-3" id="dhRows">
+        <?php if (empty($logs)): ?>
+          <p class="text-muted mb-0">Nothing has happened to this document yet.</p>
+        <?php else: ?>
+          <?php foreach (array_reverse($logs) as $entry): ?>
+            <?php
+              $actionKey  = strtolower(str_replace(' ', '-', (string)$entry['action']));
+              $actorLabel = (string)$entry['actor_name'];
+              if (!empty($entry['actor_office'])) {
+                  $actorLabel .= ' ' . $entry['actor_office'];
+              }
+            ?>
+            <div class="dh-row dh-row--<?= e($actionKey) ?>">
+              <div class="dh-row__head">
+                <span class="dh-when"><?= e(date('M j Y g:iA', strtotime((string)$entry['created_at']))) ?></span>
+                <span class="dh-what"><?= e((string)$entry['action']) ?></span>
+                <span class="dh-who">by: <?= e($actorLabel) ?></span>
+              </div>
+              <?php if (!empty($entry['details'])): ?>
+                <div class="dh-row__detail"><?= e((string)$entry['details']) ?></div>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
     </div>
   </div>
 </div>
+
+<!-- The Route modal was removed with the Route action: routing is
+     automatic and there is no recipient to choose. -->
 
 <!-- Add Cloud Link Modal -->
 <div class="modal fade" id="linkModal" tabindex="-1">
@@ -875,5 +961,46 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>';
 $extraScripts .= '<script src="' . e(asset('assets/js/document_view.js')) . '"></script>';
+$extraScripts .= '<script>
+/* Document History paging. The whole register is rendered and then
+   windowed in the browser: these are tens of rows, not thousands, and a
+   page that pages without a round trip is worth more here than a query
+   that fetches ten rows at a time. */
+(function () {
+  var rows = Array.prototype.slice.call(document.querySelectorAll("#dhRows .dh-row"));
+  var counter = document.getElementById("dhCounter");
+  if (!counter) return;
+
+  var PER_PAGE = 10;
+  var page = 0;
+  var pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+
+  function render() {
+    var first = page * PER_PAGE;
+    var last = Math.min(first + PER_PAGE, rows.length);
+    rows.forEach(function (row, i) { row.hidden = (i < first || i >= last); });
+    counter.textContent = rows.length
+      ? "ROW " + (first + 1) + " - " + last + " OF " + rows.length
+      : "ROW 0 - 0 OF 0";
+    document.querySelectorAll("[data-dh]").forEach(function (btn) {
+      var at = btn.dataset.dh;
+      btn.disabled = (at === "first" || at === "prev") ? page === 0 : page >= pages - 1;
+    });
+  }
+
+  document.querySelectorAll("[data-dh]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var at = btn.dataset.dh;
+      if (at === "first") page = 0;
+      else if (at === "prev") page = Math.max(0, page - 1);
+      else if (at === "next") page = Math.min(pages - 1, page + 1);
+      else page = pages - 1;
+      render();
+    });
+  });
+
+  render();
+})();
+</script>';
 include __DIR__ . '/includes/footer.php';
 ?>

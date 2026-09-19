@@ -8,6 +8,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/auto_routing.php';
 require_role(['admin', 'approver']);
 csrf_protect();
 
@@ -38,7 +39,22 @@ $decisionLabel = $decision === 'approve' ? 'Approved' : 'Rejected';
 $ok = $documentModel->decideApproval($documentId, (int)current_user()['id'], $decisionLabel, $remarks ?: null);
 
 if ($ok) {
-    json_response(['success' => true, 'message' => "Document {$decisionLabel} successfully."]);
+    $message = "Document {$decisionLabel} successfully.";
+
+    // The decision goes straight back to whoever raised the document —
+    // the third and last automatic hop, with nothing to click.
+    $back = autoRouteToCreator(
+        $documentModel, $doc, $decisionLabel, (int)current_user()['id'], $pdo, $remarks
+    );
+    if ($back['routed']) {
+        $message .= ' Returned to ' . $back['to'] . '.';
+    } elseif ($back['reason'] !== null) {
+        // It stays with the approver, and they are told why rather than
+        // being left to assume the creator has it.
+        $message .= ' It was not returned to the creator because ' . $back['reason'] . '.';
+    }
+
+    json_response(['success' => true, 'message' => $message]);
 }
 
 json_response(['success' => false, 'message' => 'Unable to record the decision. Please try again.'], 500);

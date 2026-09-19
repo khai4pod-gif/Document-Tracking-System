@@ -73,10 +73,12 @@ function confirmAction(title, text, confirmText = 'Yes, proceed') {
 }
 
 /**
- * Confirmation dialog that also collects a required free-text reason.
- * Resolves to the trimmed text, or null if the user cancelled — so callers
- * check `=== null` rather than truthiness (an empty string never gets past
- * the validator anyway).
+ * Confirmation dialog that also collects a free-text note.
+ *
+ * Resolves to the trimmed text, or null if the user cancelled. Callers
+ * must test `=== null` rather than truthiness: with `optional: true` a
+ * blank note is a legitimate answer that resolves to an empty string, so
+ * "cancelled" and "left blank" have to stay distinguishable.
  */
 async function confirmWithRemarks({
   title,
@@ -86,15 +88,21 @@ async function confirmWithRemarks({
   placeholder = '',
   help = '',
   maxLength = 500,
+  optional = false,
+  requiredMessage = 'Please enter the conclusion remarks.',
+  icon = 'warning',
 }) {
   const res = await Swal.fire({
     title,
-    icon: 'warning',
+    icon,
     html: `
       ${text ? `<div class="swal-remarks__intro">${escapeHtml(text)}</div>` : ''}
       <div class="swal-remarks">
         <label class="swal-remarks__label" for="swalRemarks">
-          ${escapeHtml(label)} <span class="swal-remarks__req">*</span>
+          ${escapeHtml(label)}
+          ${optional
+            ? '<span class="swal-remarks__opt">(optional)</span>'
+            : '<span class="swal-remarks__req">*</span>'}
         </label>
         <textarea id="swalRemarks" class="swal-remarks__input" rows="3"
                   maxlength="${maxLength}" placeholder="${escapeHtml(placeholder)}"></textarea>
@@ -117,15 +125,18 @@ async function confirmWithRemarks({
     },
     preConfirm: () => {
       const value = document.getElementById('swalRemarks').value.trim();
-      if (!value) {
-        Swal.showValidationMessage('Please enter the conclusion remarks.');
+      if (!optional && !value) {
+        Swal.showValidationMessage(requiredMessage);
         return false;
       }
-      return value;
+      // SweetAlert treats a falsy preConfirm result as "stay open", so an
+      // empty optional note has to come back as something truthy-safe.
+      // The caller unwraps it.
+      return { value };
     },
   });
 
-  return res.isConfirmed ? res.value : null;
+  return res.isConfirmed ? (res.value?.value ?? '') : null;
 }
 
 /* ---------------- Keep tables aligned on zoom / resize ---------------- */

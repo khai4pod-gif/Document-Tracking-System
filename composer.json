@@ -8,5 +8,8 @@
     },
     "autoload-dev": {
         "classmap": ["tests/"]
+    },
+    "require": {
+        "smalot/pdfparser": "^2.12"
     }
 }

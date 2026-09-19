@@ -6,6 +6,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/config/config.php';
+require_once __DIR__ . '/includes/auto_routing.php';
 require_login();
 
 $showArchived = isset($_GET['archived']) && $_GET['archived'] === '1';
@@ -145,19 +146,47 @@ include __DIR__ . '/includes/header.php';
             </div>
             <div class="col-md-6">
               <label class="form-label">Document Type</label>
-              <select name="doc_type" id="fieldType" class="form-select">
-                <option>Memo</option>
-                <option>Letter</option>
-                <option>Report</option>
-                <option>Purchase Request</option>
-                <option>Relief Manifest</option>
-                <option>Special Order</option>
-                <option>ORs/DV</option>
-                <option>PPMP</option>
-                <option>Purchase Order</option>
-                <option>Leave Application</option>
-                <option selected>Other</option>
-              </select>
+              <?php
+              // The creator does not choose a type. The system reads the
+              // attached file and says what it is; the select below stays in
+              // the page because it is still the answer in the two cases the
+              // system cannot settle on its own — a file it is unsure about,
+              // and a creator who disagrees — and it is hidden until then.
+              ?>
+              <div id="typeDetected" class="type-detect" data-state="idle">
+                <div class="type-detect__head">
+                  <span class="type-detect__icon"><i class="bi bi-stars"></i></span>
+                  <div class="type-detect__body">
+                    <div class="type-detect__value" id="typeDetectedValue">Detected automatically</div>
+                    <div class="type-detect__note" id="typeDetectedNote">Attach the document and the system will identify its type.</div>
+                  </div>
+                  <span class="type-detect__conf" id="typeDetectedConf" hidden></span>
+                </div>
+                <div class="type-detect__why" id="typeDetectedWhy" hidden></div>
+                <button type="button" class="type-detect__override" id="btnOverrideType" hidden>
+                  <i class="bi bi-pencil me-1"></i>Set the type myself
+                </button>
+              </div>
+
+              <div id="typeManual" hidden>
+                <select name="doc_type" id="fieldType" class="form-select">
+                  <option>Memo</option>
+                  <option>Letter</option>
+                  <option>Report</option>
+                  <option>Purchase Request</option>
+                  <option>Relief Manifest</option>
+                  <option>Special Order</option>
+                  <option>ORs/DV</option>
+                  <option>PPMP</option>
+                  <option>Purchase Order</option>
+                  <option>Leave Application</option>
+                  <option selected>Other</option>
+                </select>
+                <div class="form-text" id="typeManualHelp"></div>
+              </div>
+              <!-- Set when the creator overrules the system, so the server
+                   keeps their choice instead of replacing it. -->
+              <input type="hidden" name="doc_type_overridden" id="fieldTypeOverridden" value="">
             </div>
             <div class="col-md-6">
               <label class="form-label">Due Date</label>
@@ -167,41 +196,67 @@ include __DIR__ . '/includes/header.php';
               <label class="form-label">Description</label>
               <textarea name="description" id="fieldDescription" class="form-control" rows="3" maxlength="2000"></textarea>
             </div>
-<?php if ($canRoute): ?>
+<?php
+            // The recipient is no longer a choice: saving sends the document
+            // to the Office of the Secretary, and acknowledging it there
+            // sends it on to this office's approver. So this block states
+            // where it will go instead of asking.
+            $__pdo  = Database::getConnection();
+            $__osec = osec_office($__pdo);
+            $__mine = approverForDocument(
+                ['origin_department_id' => current_user()['department_id'] ?? null],
+                $__pdo
+            );
+            ?>
             <div class="col-12" id="routeOnCreateWrapper">
-              <label class="form-label mb-2">Route <span class="text-muted small">(Optional)</span></label>
+              <label class="form-label mb-2">Where this goes</label>
               <div class="route-card">
-                <div class="route-card__sub">
+                <div class="route-card__sub mb-2">
                   <i class="bi bi-signpost-split me-1"></i>
-                  Send this document to a recipient as soon as it is saved. Leave the recipient blank to keep it as a draft you can route later.
+                  Routing is automatic — there is nothing to choose here.
                 </div>
-                <div class="row g-2">
-                  <div class="col-md-6">
-                    <label class="form-label small text-muted mb-1">Route To</label>
-                    <select name="route_to_user_id" id="fieldRouteTo" class="form-select">
-                      <option value="">Do not route yet — save as draft</option>
-                    </select>
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label small text-muted mb-1">Action Required</label>
-                    <select name="route_action_required" id="fieldRouteAction" class="form-select">
-                      <option value="">Select action…</option>
-                      <?php foreach (route_action_options() as $__action): ?>
-                        <option value="<?= e($__action) ?>"><?= e($__action) ?></option>
-                      <?php endforeach; ?>
-                    </select>
-                  </div>
-                  <div class="col-12">
-                    <label class="form-label small text-muted mb-1">Remarks</label>
-                    <textarea name="route_remarks" id="fieldRouteRemarks" class="form-control" rows="2"
-                              maxlength="1000" placeholder="Optional notes for the recipient"></textarea>
+                <ol class="auto-route-steps mb-0 ps-3">
+                  <li>
+                    <strong>Office of the Secretary</strong>
+                    <?php if (!empty($__osec['receiver_name'])): ?>
+                      <span class="text-muted">— <?= e($__osec['receiver_name']) ?> acknowledges receipt</span>
+                    <?php else: ?>
+                      <span class="text-danger">— no receiving user assigned yet, so it will stay with you</span>
+                    <?php endif; ?>
+                  </li>
+                  <li>
+                    <?php if ($__mine['user'] !== null): ?>
+                      <strong><?= e($__mine['user']['full_name']) ?></strong>
+                      <span class="text-muted">— approver for <?= e($__mine['user']['office_name']) ?></span>
+                    <?php else: ?>
+                      <span class="text-danger">
+                        No approver yet — <?= e((string)$__mine['reason']) ?>.
+                        It will wait at the Office of the Secretary.
+                      </span>
+                    <?php endif; ?>
+                  </li>
+                </ol>
+
+                <div class="mt-3 pt-3 border-top">
+                  <label class="form-label small text-muted mb-1" for="fieldTransmittal">
+                    Mode of transmittal
+                  </label>
+                  <select class="form-select form-select-sm" name="transmittal_mode" id="fieldTransmittal">
+                    <?php foreach (TRANSMITTAL_MODES as $__mode): ?>
+                      <option value="<?= e($__mode) ?>"<?= $__mode === DEFAULT_TRANSMITTAL_MODE ? ' selected' : '' ?>>
+                        <?= e($__mode) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <div class="form-text">
+                    How the document itself reaches the next office. It is recorded on every
+                    hop of the document history.
                   </div>
                 </div>
               </div>
             </div>
-<?php endif; ?>
             <div class="col-12" id="attachmentWrapper">
-              <label class="form-label mb-2">Attachments <span class="text-muted small">(Optional)</span></label>
+              <label class="form-label mb-2">Attachments</label>
 
               <div class="cloud-link-card">
                 <div class="cloud-link-card__header">
@@ -222,8 +277,9 @@ include __DIR__ . '/includes/header.php';
               </div>
 
               <div class="mt-3">
-                <label class="form-label small text-muted">Or upload a file instead <span class="text-muted">(PDF or Word, max 10MB)</span></label>
+                <label class="form-label small text-muted">Upload the document file <span class="text-danger">*</span> <span class="text-muted">(PDF or Word, max 10MB)</span></label>
                 <input type="file" name="attachment" id="fieldAttachment" class="form-control" accept=".pdf,.doc,.docx">
+                <div class="form-text">Required &#8212; the system reads the file to work out the document type.</div>
               </div>
             </div>
           </div>
@@ -247,6 +303,48 @@ include __DIR__ . '/includes/header.php';
   padding: 1rem 1.1rem;
 }
 .route-card__sub { font-size: 0.85rem; color: #5b6472; margin-bottom: 0.9rem; }
+
+/* ---- Detected document type -------------------------------------
+   Four states, set on data-state: idle (nothing read yet), working
+   (reading the file), done (a confident answer) and unsure (an answer
+   the system will not stand behind, so the select is revealed).
+   Colour carries the difference because the wording alone is easy to
+   skim past on a form this long. */
+.type-detect {
+  border: 1px solid #e3e9f2;
+  background: #f7f9fc;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+}
+.type-detect[data-state="done"]   { border-color: #c6dbff; background: #eef4ff; }
+.type-detect[data-state="unsure"] { border-color: #ffe2ab; background: #fff8ec; }
+.type-detect__head { display: flex; align-items: flex-start; gap: 0.55rem; }
+.type-detect__icon {
+  width: 26px; height: 26px; border-radius: 50%; background: #fff;
+  border: 1px solid #e3e9f2; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #4361ee; font-size: 0.85rem; line-height: 1;
+}
+.type-detect[data-state="unsure"] .type-detect__icon { color: #b8860b; }
+.type-detect__body { min-width: 0; flex: 1 1 auto; }
+.type-detect__value { font-weight: 600; font-size: 0.95rem; color: #1f2937; }
+.type-detect[data-state="done"] .type-detect__value { color: #1d3c8c; }
+.type-detect__note { font-size: 0.78rem; color: #5b6472; margin-top: 0.1rem; }
+.type-detect__conf {
+  flex-shrink: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em;
+  background: #fff; border: 1px solid #c6dbff; color: #1d3c8c;
+  border-radius: 999px; padding: 0.1rem 0.45rem; white-space: nowrap;
+}
+.type-detect__why {
+  font-size: 0.74rem; color: #5b6472; margin-top: 0.45rem;
+  padding-top: 0.4rem; border-top: 1px dashed #dbe3ee;
+  overflow-wrap: anywhere;
+}
+.type-detect__override {
+  background: none; border: 0; padding: 0; margin-top: 0.4rem;
+  font-size: 0.78rem; color: #4361ee; text-decoration: underline;
+}
+.type-detect__override:hover { color: #2f4bd1; }
 .cloud-link-card {
   background: #eef4ff;
   border: 1px solid #dbe6fd;

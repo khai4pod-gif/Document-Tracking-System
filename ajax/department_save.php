@@ -17,6 +17,9 @@ $id          = (int)($_POST['id'] ?? 0);
 $name        = trim((string)($_POST['name'] ?? ''));
 $code        = strtoupper(trim((string)($_POST['code'] ?? '')));
 $description = trim((string)($_POST['description'] ?? ''));
+// Empty string means "no approver", which is a legitimate state.
+$approverRaw = trim((string)($_POST['approver_user_id'] ?? ''));
+$approverId  = $approverRaw === '' ? null : (int)$approverRaw;
 
 $errors = [];
 if ($name === '' || mb_strlen($name) > 150) {
@@ -43,19 +46,46 @@ if ((int)$check->fetch()['cnt'] > 0) {
     json_response(['success' => false, 'message' => 'That department code is already in use.'], 409);
 }
 
+// The approver must exist, be active, and actually hold the approver role.
+// Documents reach this person automatically with nobody reviewing the
+// choice at the time, so it is checked when it is set instead.
+if ($approverId !== null) {
+    $who = $pdo->prepare("SELECT role, is_active FROM users WHERE id = :id LIMIT 1");
+    $who->execute(['id' => $approverId]);
+    $row = $who->fetch();
+
+    if (!$row) {
+        json_response(['success' => false, 'message' => 'The selected approver no longer exists.'], 422);
+    }
+    if ((int)$row['is_active'] !== 1) {
+        json_response(['success' => false, 'message' => 'That account is deactivated and cannot be an approver.'], 422);
+    }
+    if ($row['role'] !== 'approver') {
+        json_response(['success' => false, 'message' => 'Only accounts with the approver role can be assigned to an office.'], 422);
+    }
+}
+
 try {
     if ($id > 0) {
         $stmt = $pdo->prepare(
-            "UPDATE departments SET name = :name, code = :code, description = :desc WHERE id = :id"
+            "UPDATE departments
+                SET name = :name, code = :code, description = :desc, approver_user_id = :approver
+              WHERE id = :id"
         );
-        $ok = $stmt->execute(['name' => $name, 'code' => $code, 'desc' => $description ?: null, 'id' => $id]);
+        $ok = $stmt->execute([
+            'name' => $name, 'code' => $code, 'desc' => $description ?: null,
+            'approver' => $approverId, 'id' => $id,
+        ]);
         json_response(['success' => $ok, 'message' => $ok ? 'Department updated.' : 'Update failed.']);
     }
 
     $stmt = $pdo->prepare(
-        "INSERT INTO departments (name, code, description, is_active, created_at) VALUES (:name, :code, :desc, 1, NOW())"
+        "INSERT INTO departments (name, code, description, approver_user_id, is_active, created_at)
+         VALUES (:name, :code, :desc, :approver, 1, NOW())"
     );
-    $stmt->execute(['name' => $name, 'code' => $code, 'desc' => $description ?: null]);
+    $stmt->execute([
+        'name' => $name, 'code' => $code, 'desc' => $description ?: null, 'approver' => $approverId,
+    ]);
     json_response(['success' => true, 'message' => 'Department created.', 'id' => (int)$pdo->lastInsertId()]);
 } catch (Throwable $e) {
     error_log('[DEPARTMENT SAVE ERROR] ' . $e->getMessage());

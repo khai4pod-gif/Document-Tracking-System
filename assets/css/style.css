@@ -278,6 +278,9 @@ a.perf-sub--link:focus-visible{outline:2px solid var(--accent);outline-offset:3p
   display:block;font-weight:600;font-size:.9rem;color:var(--navy-800);margin-bottom:.4rem;
 }
 .swal-remarks__req{color:#dc3545;}
+/* Counterpart to __req: marks a note that may be skipped, without the
+   weight of the red asterisk that means "you must". */
+.swal-remarks__opt{color:#8a93a3;font-weight:400;font-size:.85em;}
 .swal-remarks__input{
   width:100%;border:1px solid #d5dbe4;border-radius:8px;padding:.6rem .75rem;
   font-size:.92rem;font-family:inherit;line-height:1.45;resize:vertical;color:var(--navy-800);

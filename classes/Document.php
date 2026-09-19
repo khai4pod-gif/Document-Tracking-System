@@ -937,6 +937,54 @@ class Document
      * view uses to show the Approve/Reject buttons, so a document is only ever
      * reopened for someone who can actually act on it.
      */
+    /**
+     * How a recipient should be named in the audit trail: their name and,
+     * where they have one, the office they answer for — "Ace Correa
+     * (Traditional Media Services)". An id would be shorter and useless
+     * to the person reading the history.
+     */
+    /**
+     * The mode of transmittal recorded on the document's most recent hop.
+     *
+     * The automatic hops have nobody to ask, so they keep the document
+     * travelling the way it was already travelling: a hard copy walked
+     * into the office does not become an email because the system, rather
+     * than a person, sent it onward.
+     */
+    public function latestTransmittalMode(int $documentId): ?string
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT transmittal_mode
+               FROM document_routes
+              WHERE document_id = :doc AND transmittal_mode IS NOT NULL
+              ORDER BY routed_at DESC, id DESC
+              LIMIT 1"
+        );
+        $stmt->execute(['doc' => $documentId]);
+        $mode = $stmt->fetchColumn();
+
+        return $mode === false ? null : (string)$mode;
+    }
+
+    private function recipientLabel(int $userId): string
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT u.full_name, d.name AS office
+               FROM users u
+               LEFT JOIN departments d ON d.id = u.department_id
+              WHERE u.id = :id"
+        );
+        $stmt->execute(['id' => $userId]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            return "user #{$userId}";
+        }
+        return $row['office']
+            ? "{$row['full_name']} ({$row['office']})"
+            : (string)$row['full_name'];
+    }
+
     private function recipientCanApprove(int $userId): bool
     {
         $stmt = $this->pdo->prepare("SELECT role FROM users WHERE id = :id");
@@ -946,14 +994,22 @@ class Document
 
     public function route(int $documentId, array $data, int $fromUserId): bool
     {
+        // How the document travelled to the next office. Anything the
+        // caller does not recognise is stored as nothing rather than as a
+        // guess, so a hop nobody recorded stays visibly unrecorded.
+        $mode = $data['transmittal_mode'] ?? null;
+        if (!in_array($mode, TRANSMITTAL_MODES, true)) {
+            $mode = null;
+        }
+
         $this->pdo->beginTransaction();
         try {
             $stmt = $this->pdo->prepare(
                 "INSERT INTO document_routes
                     (document_id, from_user_id, to_user_id, from_department_id, to_department_id,
-                     action_required, remarks, status, routed_at)
+                     action_required, transmittal_mode, remarks, status, routed_at)
                  VALUES
-                    (:doc, :from_user, :to_user, :from_dept, :to_dept, :action, :remarks, 'Pending', NOW())"
+                    (:doc, :from_user, :to_user, :from_dept, :to_dept, :action, :mode, :remarks, 'Pending', NOW())"
             );
             $stmt->execute([
                 'doc'       => $documentId,
@@ -962,6 +1018,7 @@ class Document
                 'from_dept' => $data['from_department_id'] ?: null,
                 'to_dept'   => $data['to_department_id'] ?: null,
                 'action'    => $data['action_required'],
+                'mode'      => $mode,
                 'remarks'   => $data['remarks'] ?: null,
             ]);
 
@@ -978,8 +1035,13 @@ class Document
             // the document forever. Routing it anywhere else (typically the
             // approver handing it back to the owner) must leave the rejection
             // standing, because that is the signal to revise it.
+            //
+            // 'no_reopen' opts out. Returning a decided document to its
+            // creator is the delivery of an outcome, not a resubmission —
+            // and when that creator happens to be an admin or approver,
+            // reopening would wipe the very rejection being delivered.
             $reopened = false;
-            if ($this->recipientCanApprove((int)$data['to_user_id'])) {
+            if (empty($data['no_reopen']) && $this->recipientCanApprove((int)$data['to_user_id'])) {
                 $reopen = $this->pdo->prepare(
                     "UPDATE documents
                         SET approval_status = 'Pending', approved_by = NULL, approved_at = NULL
@@ -989,10 +1051,15 @@ class Document
                 $reopened = $reopen->rowCount() > 0;
             }
 
-            log_document_action(
-                $this->pdo, $documentId, $fromUserId, 'Routed',
-                "Routed to user #{$data['to_user_id']} — Action required: {$data['action_required']}"
-            );
+            // Named, not numbered: this line is read by the people chasing
+            // the document, not by the database.
+            $detail = 'Routed document to ' . $this->recipientLabel((int)$data['to_user_id'])
+                    . " — Action required: {$data['action_required']}";
+            if ($mode !== null) {
+                $detail .= " (Mode of Transmittal: {$mode})";
+            }
+
+            log_document_action($this->pdo, $documentId, $fromUserId, 'Routed', $detail);
 
             // Logged after the routing entry so the timeline reads in the order
             // the events actually happened.
@@ -1132,9 +1199,13 @@ class Document
 
     public function getLogs(int $documentId): array
     {
-        $sql = "SELECT l.*, u.full_name AS actor_name, u.role AS actor_role
+        // The office is part of the answer: a history that says who
+        // acted without saying for which office reads like gossip.
+        $sql = "SELECT l.*, u.full_name AS actor_name, u.role AS actor_role,
+                       dept.name AS actor_office, dept.code AS actor_office_code
                 FROM document_logs l
                 JOIN users u ON u.id = l.user_id
+                LEFT JOIN departments dept ON dept.id = u.department_id
                 WHERE l.document_id = :doc
                 ORDER BY l.created_at ASC, l.id ASC";
         $stmt = $this->pdo->prepare($sql);

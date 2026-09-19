@@ -7,6 +7,9 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/auto_routing.php';
+require_once __DIR__ . '/../includes/text_extract.php';
+require_once __DIR__ . '/../classes/DocumentClassifier.php';
 require_login();
 csrf_protect();
 
@@ -117,66 +120,107 @@ try {
     }
 
     // Optional initial attachment
+    $fileText   = '';
+    $textSource = 'fields';
     if (!empty($_FILES['attachment']['name'])) {
         try {
             $uploader = new FileUploader(UPLOAD_DIR);
             $fileMeta = $uploader->upload($_FILES['attachment']);
             $documentModel->addAttachment($newId, $fileMeta, (int)$user['id']);
+
+            // Read the file so it can be classified. A failure here must not
+            // cost the user their upload: the document and its attachment
+            // are already saved, so the classifier simply falls back to the
+            // typed fields and says so.
+            $extracted = extractDocumentText($fileMeta['file_path'], $fileMeta['mime_type']);
+            if ($extracted['text'] !== '') {
+                $fileText   = $extracted['text'];
+                $textSource = $extracted['source'];
+            } elseif ($extracted['source'] === 'scanned') {
+                // Recorded as a scan rather than as 'fields': the corpus
+                // should not hold a row whose "document text" is really
+                // just the title typed above it.
+                $textSource = 'scanned';
+                $notes[] = 'the file is a scan with no text in it, so the type was judged from the title alone — please check it';
+            } elseif ($extracted['error'] !== null) {
+                $notes[] = 'the uploaded file could not be read for classification ('
+                         . $extracted['error'] . '), so the type was judged from the title and description';
+            }
         } catch (RuntimeException $e) {
             $notes[] = 'the attachment failed (' . $e->getMessage() . ')';
         }
     }
 
-    // Optional immediate routing, driven by the "Route" block on the create form.
-    $routedTo = null;
-    $routeToUserId = (int)($_POST['route_to_user_id'] ?? 0);
+    // Classify, and keep the text that produced the verdict. The stored
+    // text is what a future model trains on, so it is written whether the
+    // prediction is used or not.
+    $classifyText = buildClassificationText($title, $description, $fileText);
+    storeDocumentText($pdo, $newId, $classifyText, $textSource);
+    $uploadName = (string)($_FILES['attachment']['name'] ?? '');
 
-    if ($routeToUserId > 0) {
-        // Leaving the action dropdown alone falls back to the neutral default
-        // rather than silently dropping the recipient choice; a value that
-        // isn't on the list did not come from the form.
-        $actionRequired = trim((string)($_POST['route_action_required'] ?? ''));
-        if ($actionRequired === '') {
-            $actionRequired = DEFAULT_ROUTE_ACTION;
-        }
+    $classifier = new RuleBasedClassifier();
+    // The file and the title are read separately and then reconciled, so a
+    // six-word title still counts for something against a fifteen thousand
+    // character body — and so the two can be seen to disagree.
+    $prediction = verifyDocumentType(
+        $classifier,
+        normaliseExtractedText($fileText),
+        normaliseExtractedText(trim($title . ' ' . $description . ' ' . filenameEvidence($uploadName)))
+    );
 
-        $stmt = $pdo->prepare(
-            "SELECT full_name, department_id FROM users WHERE id = :id AND is_active = 1 LIMIT 1"
-        );
-        $stmt->execute(['id' => $routeToUserId]);
-        $recipient = $stmt->fetch();
-
-        // Each guard explains itself; routing only happens once all of them pass.
-        $skipReason = match (true) {
-            !user_can_route($user, $pdo)
-                => 'your account does not have permission to route documents',
-            $routeToUserId === (int)$user['id']
-                => 'a document cannot be routed to yourself',
-            !$recipient
-                => 'the selected recipient no longer exists or is inactive',
-            !is_valid_route_action($actionRequired)
-                => 'the action required was not one of the listed options',
-            default => null,
-        };
-
-        if ($skipReason !== null) {
-            $notes[] = 'routing was skipped because ' . $skipReason;
-        } else {
-            $routed = $documentModel->route($newId, [
-                'to_user_id'         => $routeToUserId,
-                'from_department_id' => $user['department_id'],
-                'to_department_id'   => $recipient['department_id'],
-                'action_required'    => $actionRequired,
-                'remarks'            => mb_substr(trim((string)($_POST['route_remarks'] ?? '')), 0, 1000),
-            ], (int)$user['id']);
-
-            if ($routed) {
-                $routedTo = $recipient['full_name'];
-            } else {
-                $notes[] = 'the document could not be routed — use the Route action to send it';
-            }
-        }
+    if ($prediction['agreement'] === 'conflict') {
+        // Nothing is filed on a contradiction. Say why, so the creator is
+        // not left wondering which reading the system took.
+        $notes[] = 'the document reads as ' . $prediction['document']['type']
+                 . ' but the title reads as ' . $prediction['title']['type']
+                 . ', so the type was left as you set it';
     }
+
+    $pdo->prepare(
+        "UPDATE documents
+            SET detected_type = :type, detection_confidence = :conf,
+                detection_source = :src, detected_at = NOW()
+          WHERE id = :id"
+    )->execute([
+        'type' => $prediction['type'],
+        'conf' => $prediction['confidence'],
+        'src'  => $prediction['source'],
+        'id'   => $newId,
+    ]);
+
+    // The prediction only becomes the document's type when it is confident
+    // AND the creator did not override it. Below the threshold the typed
+    // choice stands, which is why the form still submits one.
+    if ($prediction['confidence'] >= RuleBasedClassifier::ACCEPT_THRESHOLD
+        && empty($_POST['doc_type_overridden'])) {
+        $pdo->prepare("UPDATE documents SET doc_type = :t WHERE id = :id")
+            ->execute(['t' => $prediction['type'], 'id' => $newId]);
+    }
+
+    // Every new document goes to the Office of the Secretary by itself —
+    // no recipient is chosen on the form. From there, acknowledging it
+    // sends it on to the originating office's approver (see
+    // includes/auto_routing.php and ajax/document_receive.php).
+    // How the document itself travels onward. Anything unrecognised is
+    // dropped rather than stored, so a tampered form leaves the hop
+    // unrecorded instead of inventing a mode for it.
+    $transmittalMode = (string)($_POST['transmittal_mode'] ?? DEFAULT_TRANSMITTAL_MODE);
+    if (!in_array($transmittalMode, TRANSMITTAL_MODES, true)) {
+        $transmittalMode = null;
+    }
+
+    $auto = autoRouteToSecretary($documentModel, $newId, $user, $pdo, $transmittalMode);
+    $routedTo = $auto['routed'] ? $auto['to'] : null;
+    if (!$auto['routed'] && $auto['reason'] !== null) {
+        // The document still exists and is visible to its creator; it just
+        // has not moved. Saying why beats leaving it looking filed.
+        $notes[] = 'it was not sent to the Office of the Secretary because ' . $auto['reason'];
+    }
+
+    // The old "Route" block that let the creator pick a recipient has been
+    // removed: the destination is no longer a choice, so accepting
+    // route_to_user_id from a stale cached form would put the document
+    // somewhere the automatic chain never looks for it.
 
     $message = 'Document created — tracking number ' . $result['tracking_number'];
     if ($routedTo !== null) {
