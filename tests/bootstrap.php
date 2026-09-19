@@ -36,3 +36,23 @@ if (!defined('PASSWORD_RESET_TTL_SECONDS')) {
 if (!defined('PASSWORD_RESET_COOLDOWN')) {
     define('PASSWORD_RESET_COOLDOWN', 120);
 }
+
+// Document::route()'s MAIL_ON_ROUTE check sits outside emailRouteRecipient()'s
+// own try/catch, so an undefined constant here is a fatal Error thrown after
+// route() has already committed — its catch block then calls rollBack() on a
+// transaction that no longer exists, which itself throws. Defined false
+// (rather than mirroring production's true) so tests never exercise the mail
+// path at all — no need for Mailpit/SMTP to be reachable during a test run.
+if (!defined('MAIL_ON_ROUTE')) {
+    define('MAIL_ON_ROUTE', false);
+}
+// Relief::notifyOversight() reads both of these inside its own try/catch, so
+// they're safe by construction either way — defined for the same reason as
+// above, and RELIEF_NOTIFY_USERNAMES = [] means the function returns before
+// MAIL_ON_DISTRIBUTION would even be reached.
+if (!defined('RELIEF_NOTIFY_USERNAMES')) {
+    define('RELIEF_NOTIFY_USERNAMES', []);
+}
+if (!defined('MAIL_ON_DISTRIBUTION')) {
+    define('MAIL_ON_DISTRIBUTION', false);
+}
